@@ -1,10 +1,11 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Body, Query
 from sqlalchemy.orm import Session
 from backend import crud, models, schemas
 from backend.database import SessionLocal, engine
 from fastapi.middleware.cors import CORSMiddleware
+from typing import Dict, List
 
-# Creamos las tablas en la base de datos
+# 1. Conexión y creación de tablas
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Bondify API")
@@ -17,7 +18,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Función para conectar con la base de datos
 def get_db():
     db = SessionLocal()
     try:
@@ -49,7 +49,8 @@ def login(usuario: schemas.UsuarioLogin, db: Session = Depends(get_db)):
         "mensaje": "Inicio de sesión exitoso", 
         "usuario": user.nombre, 
         "rol": user.tipo_usuario,
-        "id_usuario": user.id_usuario 
+        "id_usuario": user.id_usuario,
+        "puntos": user.puntos 
     }
 
 @app.put("/usuarios/{usuario_id}/perfil")
@@ -68,28 +69,23 @@ def obtener_perfil(usuario_id: int, db: Session = Depends(get_db)):
 
 # --- GESTIÓN DE FAMILIA ---
 
-# 1. Crear la familia (Solo el Jefe)
 @app.post("/familias/", response_model=schemas.FamiliaResponse)
 def crear_familia(familia: schemas.FamiliaCreate, db: Session = Depends(get_db)):
     nueva_familia = models.Familia(nombre_familia=familia.nombre_familia, id_jefe=familia.id_jefe)
     db.add(nueva_familia)
     db.commit()
     db.refresh(nueva_familia)
-    
     jefe = db.query(models.Usuario).filter(models.Usuario.id_usuario == familia.id_jefe).first()
     if jefe:
         jefe.id_familia = nueva_familia.id_familia
         db.commit()
-    
     return nueva_familia
 
-# 2. Listar integrantes
 @app.get("/familias/{usuario_id}/integrantes")
 def listar_integrantes(usuario_id: int, db: Session = Depends(get_db)):
     user = db.query(models.Usuario).filter(models.Usuario.id_usuario == usuario_id).first()
-    
     if not user or not user.id_familia:
-        return {"mensaje": "Sin familia", "integrantes": [], "nombre_familia": "N/A", "id_jefe": None}
+        return {"mensaje": "Sin familia", "integrantes": [], "nombre_familia": "N/A", "puntos_familia": 0}
     
     fam = db.query(models.Familia).filter(models.Familia.id_familia == user.id_familia).first()
     miembros = db.query(models.Usuario).filter(models.Usuario.id_familia == user.id_familia).all()
@@ -98,87 +94,132 @@ def listar_integrantes(usuario_id: int, db: Session = Depends(get_db)):
         "nombre_familia": fam.nombre_familia,
         "id_familia": fam.id_familia,
         "id_jefe": fam.id_jefe,
+        "puntos_familia": fam.puntos_familia,
         "integrantes": [
             {
                 "id_usuario": m.id_usuario, 
                 "nombre": m.nombre, 
-                "primer_nombre": m.primer_nombre,
-                "rol": m.tipo_usuario
+                "rol": m.tipo_usuario,
+                "puntos": m.puntos,
+                "disponibilidad": m.disponibilidad_semanal 
             } for m in miembros
         ]
     }
 
-# 3. Agregar miembro por correo
 @app.post("/familias/miembros/")
 def agregar_miembro(correo: str, id_jefe: int, db: Session = Depends(get_db)):
     jefe = db.query(models.Usuario).filter(models.Usuario.id_usuario == id_jefe).first()
     if not jefe or not jefe.id_familia:
         raise HTTPException(status_code=400, detail="Debes crear una familia primero")
-    
     nuevo_miembro = db.query(models.Usuario).filter(models.Usuario.correo == correo).first()
     if not nuevo_miembro:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    
     nuevo_miembro.id_familia = jefe.id_familia
     db.commit()
     return {"mensaje": f"¡{nuevo_miembro.nombre} añadido!"}
 
-# 4. Borrar integrante individual
 @app.delete("/familias/miembros/{usuario_id_a_borrar}")
-def borrar_miembro(usuario_id_a_borrar: int, id_jefe: int, db: Session = Depends(get_db)):
+def borrar_miembro(usuario_id_a_borrar: int, id_jefe: int = Query(...), db: Session = Depends(get_db)):
     familia = db.query(models.Familia).filter(models.Familia.id_jefe == id_jefe).first()
     if not familia:
         raise HTTPException(status_code=403, detail="No tienes permisos")
-    
     target = db.query(models.Usuario).filter(
         models.Usuario.id_usuario == usuario_id_a_borrar, 
         models.Usuario.id_familia == familia.id_familia
     ).first()
-    
     if not target:
-        raise HTTPException(status_code=404, detail="Usuario no encontrado en la familia")
-    
+        raise HTTPException(status_code=404, detail="No encontrado")
     target.id_familia = None
     db.commit()
     return {"mensaje": "Miembro removido"}
 
-# 5. ELIMINAR GRUPO FAMILIAR COMPLETO (Solo el Jefe)
 @app.delete("/familias/disolver/{id_familia}")
 def disolver_familia(id_familia: int, id_jefe: int, db: Session = Depends(get_db)):
-    familia = db.query(models.Familia).filter(
-        models.Familia.id_familia == id_familia,
-        models.Familia.id_jefe == id_jefe
-    ).first()
-
+    familia = db.query(models.Familia).filter(models.Familia.id_familia == id_familia, models.Familia.id_jefe == id_jefe).first()
     if not familia:
-        raise HTTPException(status_code=403, detail="No tienes permiso para disolver este grupo o no existe")
-
-    try:
-        db.query(models.Usuario).filter(models.Usuario.id_familia == id_familia).update({"id_familia": None})
-        db.delete(familia)
-        db.commit()
-        return {"mensaje": "Grupo familiar disuelto. Todos los miembros son ahora independientes."}
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"Error al disolver: {str(e)}")
+        raise HTTPException(status_code=403, detail="No tienes permiso")
+    db.query(models.Usuario).filter(models.Usuario.id_familia == id_familia).update({"id_familia": None})
+    db.delete(familia)
+    db.commit()
+    return {"mensaje": "Grupo familiar disuelto."}
 
 # --- RUTAS DE ACTIVIDADES ---
 
 @app.post("/actividades/", response_model=schemas.ActividadResponse)
 def crear_actividad(actividad: schemas.ActividadCreate, db: Session = Depends(get_db)):
-    # Usamos el CRUD actualizado para que no haya errores de lógica
     return crud.crear_actividad(db=db, actividad=actividad)
 
 @app.get("/familias/{id_familia}/actividades")
 def listar_actividades(id_familia: int, db: Session = Depends(get_db)):
-    # Filtra actividades por el ID de la familia
-    return db.query(models.Actividad).filter(models.Actividad.id_familia == id_familia).all()
+    actividades = db.query(models.Actividad).filter(
+        models.Actividad.id_familia == id_familia,
+        models.Actividad.terminada == False
+    ).all()
+    resultado = []
+    for a in actividades:
+        resultado.append({
+            "id_actividad": a.id_actividad,
+            "titulo": a.titulo,
+            "descripcion": a.descripcion,
+            "es_sugerencia": a.es_sugerencia,
+            "terminada": a.terminada,
+            "usuarios_asignados": [{"id_usuario": u.id_usuario, "nombre": u.nombre} for u in a.usuarios_asignados]
+        })
+    return resultado
+
+# LÓGICA DE FINALIZACIÓN MEJORADA (RACHA INDIVIDUAL Y FAMILIAR)
+@app.put("/actividades/{id_actividad}/finalizar")
+def finalizar_actividad(id_actividad: int, participaciones: Dict[str, bool] = Body(...), db: Session = Depends(get_db)):
+    act = db.query(models.Actividad).filter(models.Actividad.id_actividad == id_actividad).first()
+    if not act: raise HTTPException(status_code=404)
+    fam = db.query(models.Familia).filter(models.Familia.id_familia == act.id_familia).first()
+    
+    # Detectamos si al menos una persona cumplió para considerar la actividad lograda
+    actividad_exitosa = any(participaciones.values())
+    
+    for uid_str, cumplio in participaciones.items():
+        user = db.query(models.Usuario).filter(models.Usuario.id_usuario == int(uid_str)).first()
+        if user:
+            if cumplio:
+                user.puntos += 5  # +5 Puntos individuales (Racha positiva)
+            else:
+                user.puntos -= 5  # -5 Puntos individuales (Castigo por no ayudar)
+
+    # Lógica de Racha Familiar (Mascota)
+    if actividad_exitosa:
+        fam.puntos_familia += 1   # Sube el nivel de la mascota
+    else:
+        fam.puntos_familia -= 1   # Baja el nivel si el jefe marca que nadie lo hizo (X)
+
+    if fam.puntos_familia < 0: fam.puntos_familia = 0
+    act.terminada = True
+    db.commit()
+    return {"mensaje": "Puntos procesados", "puntos_familia": fam.puntos_familia}
+
+@app.put("/actividades/{id_actividad}/asignar/{id_usuario}")
+def asignar_miembro(id_actividad: int, id_usuario: int, db: Session = Depends(get_db)):
+    existe = db.query(models.AsignacionActividad).filter(
+        models.AsignacionActividad.id_actividad == id_actividad,
+        models.AsignacionActividad.id_usuario == id_usuario
+    ).first()
+    if not existe:
+        db.add(models.AsignacionActividad(id_actividad=id_actividad, id_usuario=id_usuario))
+        db.commit()
+    return {"mensaje": "Asignado"}
+
+@app.delete("/actividades/{id_actividad}/desasignar/{id_usuario}")
+def desasignar_miembro(id_actividad: int, id_usuario: int, db: Session = Depends(get_db)):
+    db.query(models.AsignacionActividad).filter(
+        models.AsignacionActividad.id_actividad == id_actividad,
+        models.AsignacionActividad.id_usuario == id_usuario
+    ).delete()
+    db.commit()
+    return {"mensaje": "Removido"}
 
 @app.delete("/actividades/{id_actividad}")
 def borrar_actividad(id_actividad: int, db: Session = Depends(get_db)):
     act = db.query(models.Actividad).filter(models.Actividad.id_actividad == id_actividad).first()
-    if not act:
-        raise HTTPException(status_code=404, detail="No existe")
+    if not act: raise HTTPException(status_code=404)
     db.delete(act)
     db.commit()
     return {"mensaje": "Eliminada"}

@@ -1,152 +1,185 @@
 import flet as ft
+import requests
 
-def obtener_home_view(page, nombre, rol, ir_a_bienvenida, ir_a_familia, ir_a_actividades, ir_a_calendario, ir_a_perfil, ir_a_mis_actividades, ir_a_configuracion, ir_a_gestion_familia, primer_nombre=None):
+def obtener_home_view(page, nombre, rol, ir_a_bienvenida, ir_a_familia, ir_a_actividades, ir_a_calendario, ir_a_perfil, ir_a_mis_actividades, ir_a_configuracion, ir_a_gestion_familia, usuario_sesion, primer_nombre=None):
     
-    # --- LÓGICA DE NOMBRE DINÁMICO ---
-    # Si el usuario ya llenó su perfil, usamos su primer nombre. Si no, usamos "Usuario".
-    nombre_a_mostrar = primer_nombre if primer_nombre and primer_nombre.strip() != "" else "Usuario"
+    # 1. Recuperamos datos de la sesión
+    id_actual = usuario_sesion.get("id_usuario")
+    # Si el perfil no tiene nombre, usamos el nombre de registro
+    nombre_a_mostrar = primer_nombre if primer_nombre and primer_nombre.strip() != "" else nombre
 
-    # --- FUNCIONES DE CONTROL ---
-    def cerrar_menu(e):
-        capa_overlay_menu.visible = False
-        page.update()
+    # --- ELEMENTOS DE LA INTERFAZ (OBJETOS DINÁMICOS) ---
+    # Usamos variables claras para que el código sea fácil de leer
+    puntos_personales_texto = ft.Text("0", size=24, weight="bold", color="#3C7517")
+    racha_familiar_texto = ft.Text("Racha: 0", size=16, color="#558B2F", weight="w500")
+    
+    # Configuramos la mascota con coordenadas básicas para evitar errores de versión
+    imagen_mascota = ft.Image(
+        src="nivel_1.jpeg",
+        width=240,
+        height=240,
+        fit="contain", # Evitamos ft.ImageFit
+        animate_scale=ft.Animation(600, "bounceOut") # Evitamos ft.AnimationCurve
+    )
 
-    def abrir_menu(e):
-        capa_overlay_menu.visible = True
-        page.update()
-
-    def clic_perfil(e):
-        cerrar_menu(None)
-        ir_a_perfil(e)
-
-    def clic_configuracion(e):
-        cerrar_menu(None)
-        ir_a_configuracion(e)
-
-    # --- 1. LA TARJETA DEL MENÚ ---
-    cuadro_menu = ft.Container(
-        width=280, # Aumentamos un poco el ancho para el texto más grande
-        bgcolor="#F4EAE0",
-        border_radius=15,
-        padding=15,
-        shadow=ft.BoxShadow(blur_radius=15, color=ft.Colors.BLACK26),
-        on_click=lambda _: None, 
-        content=ft.Column([
-            ft.Row([
-                # ZONA DE PERFIL
-                ft.Container(
-                    on_click=clic_perfil,
-                    border_radius=10,
-                    expand=True, 
-                    content=ft.Row([
-                        ft.CircleAvatar(
-                            content=ft.Icon(ft.Icons.PERSON, color="#5D4037"),
-                            bgcolor="#D7CCC8",
-                            radius=25
-                        ),
-                        ft.Column([
-                            ft.Row([
-                                ft.Text(
-                                    nombre_a_mostrar, 
-                                    size=22, # Texto más grande y visible
-                                    weight="bold", 
-                                    color="#864430", 
-                                    italic=True, 
-                                    overflow=ft.TextOverflow.ELLIPSIS
-                                ),
-                                ft.Icon(ft.Icons.EDIT, size=18, color="#864430"), 
-                            ], spacing=5),
-                        ], spacing=0),
-                    ], spacing=10)
-                ),
+    # --- LÓGICA DE ACTUALIZACIÓN ---
+    def cargar_datos_pantalla():
+        """Consulta al servidor los puntos y actualiza la mascota."""
+        try:
+            url_integrantes = f"http://127.0.0.1:8000/familias/{id_actual}/integrantes"
+            respuesta = requests.get(url_integrantes)
+            
+            if respuesta.status_code == 200:
+                datos = respuesta.json()
+                pts_familia = datos.get("puntos_familia", 0)
                 
-                ft.IconButton(
-                    icon=ft.Icons.CLOSE, 
-                    icon_size=20, 
-                    icon_color="#864430", 
-                    on_click=cerrar_menu
+                # Buscamos mis puntos en la lista de integrantes
+                mis_puntos_actuales = 0
+                for miembro in datos.get("integrantes", []):
+                    if miembro['id_usuario'] == id_actual:
+                        mis_puntos_actuales = miembro.get('puntos', 0)
+                
+                # Actualizamos los textos en pantalla
+                puntos_personales_texto.value = str(mis_puntos_actuales)
+                racha_familiar_texto.value = f"Racha Familiar: {pts_familia} pts"
+                
+                # CÁLCULO DE EVOLUCIÓN: Cada 15 puntos cambia de imagen
+                nivel_calculado = (pts_familia // 15) + 1
+                if nivel_calculado > 7: nivel_calculado = 7
+                
+                # Cambiamos la imagen JPEG
+                imagen_mascota.src = f"nivel_{nivel_calculado}.jpeg"
+                print(f"SISTEMA: Mostrando mascota nivel {nivel_calculado}")
+                
+                page.update()
+        except Exception as e:
+            print(f"Error en carga de datos: {e}")
+
+    # --- FUNCIONES DEL MENÚ LATERAL ---
+    def abrir_menu_lateral(e):
+        capa_oscura_overlay.visible = True
+        page.update()
+
+    def cerrar_menu_lateral(e):
+        capa_oscura_overlay.visible = False
+        page.update()
+
+    # --- CONSTRUCCIÓN DEL MENÚ (DISEÑO) ---
+    cuadro_blanco_menu = ft.Container(
+        width=280, 
+        bgcolor="#F4EAE0", 
+        border_radius=15, 
+        padding=20,
+        shadow=ft.BoxShadow(blur_radius=20, color="black26"),
+        content=ft.Column([
+            # Cabecera del menú con avatar
+            ft.Row([
+                ft.Container(
+                    on_click=lambda e: [cerrar_menu_lateral(None), ir_a_perfil(e)],
+                    content=ft.Row([
+                        ft.CircleAvatar(content=ft.Icon(ft.Icons.PERSON), bgcolor="#D7CCC8", radius=25),
+                        ft.Text(nombre_a_mostrar, size=18, weight="bold", color="#864430")
+                    ])
                 ),
-            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-
-            ft.Container(height=15), 
-
-            # OPCIÓN: CONFIGURACIÓN
-            ft.Container(
-                on_click=clic_configuracion,
-                padding=10, border_radius=10,
-                content=ft.Row([
-                    ft.Icon(ft.Icons.SETTINGS, color="#5D4037", size=24), 
-                    ft.Text("Configuración", color="#5D4037", size=18, weight="w500")
-                ], spacing=15)
+                ft.IconButton(ft.Icons.CLOSE, on_click=cerrar_menu_lateral, icon_color="#864430")
+            ], alignment="spaceBetween"),
+            
+            ft.Divider(height=20, color="#D7CCC8"),
+            
+            # Listado de opciones
+            ft.ListTile(
+                leading=ft.Icon(ft.Icons.SETTINGS, color="#5D4037"), 
+                title=ft.Text("Configuración", color="#5D4037"), 
+                on_click=lambda e: [cerrar_menu_lateral(None), ir_a_configuracion(e)]
             ),
-
-            # OPCIÓN: MI FAMILIA (Gestión)
-            ft.Container(
-                on_click=lambda e: [cerrar_menu(None), ir_a_gestion_familia(e)],
-                padding=10, border_radius=10,
-                content=ft.Row([
-                    ft.Icon(ft.Icons.GROUP, color="#5D4037", size=24), 
-                    ft.Text("mi familia", color="#5D4037", size=18, weight="w500")
-                ], spacing=15)
+            ft.ListTile(
+                leading=ft.Icon(ft.Icons.GROUP, color="#5D4037"), 
+                title=ft.Text("Mi Familia", color="#5D4037"), 
+                on_click=lambda e: [cerrar_menu_lateral(None), ir_a_gestion_familia(e)]
             ),
-
-            # OPCIÓN: MIS ACTIVIDADES
-            ft.Container(
-                on_click=lambda e: [cerrar_menu(None), ir_a_mis_actividades(e)],
-                padding=10, border_radius=10,
-                content=ft.Row([
-                    ft.Icon(ft.Icons.CALENDAR_TODAY, color="#5D4037", size=24), 
-                    ft.Text("mis actividades", color="#5D4037", size=18, weight="w500")
-                ], spacing=15)
+            ft.ListTile(
+                leading=ft.Icon(ft.Icons.LIST_ALT, color="#5D4037"), 
+                title=ft.Text("Actividades", color="#5D4037"), 
+                on_click=lambda e: [cerrar_menu_lateral(None), ir_a_actividades(e)]
             ),
         ], spacing=10)
     )
 
-    # --- 2. CAPA OSCURA DE FONDO ---
-    capa_overlay_menu = ft.Container(
-        content=cuadro_menu,
-        alignment=ft.Alignment(-0.85, -0.85),
-        bgcolor="#99000000",
-        visible=False,
-        expand=True,
-        top=0, left=0, right=0, bottom=0,
-        on_click=cerrar_menu 
+    # Capa de fondo que se oscurece al abrir el menú
+    capa_oscura_overlay = ft.Container(
+        content=cuadro_blanco_menu,
+        # SOLUCIÓN AL ERROR: Usamos coordenadas directas (-1 es izquierda, -1 es arriba)
+        alignment=ft.Alignment(-1, -1), 
+        bgcolor="#AA000000", 
+        visible=False, 
+        expand=True, 
+        on_click=cerrar_menu_lateral 
     )
 
-    # --- 3. CONTENIDO PRINCIPAL DEL HOME ---
-    contenido_home = ft.Column(
+    # --- CUERPO PRINCIPAL DE LA PANTALLA ---
+    # Aquí es donde ocurre la magia de Bondify
+    columna_principal = ft.Column(
         [
+            # BARRA SUPERIOR (LOGO Y PUNTOS)
             ft.Container(
-                height=60, 
-                padding=ft.padding.only(left=10, top=10), 
+                padding=10, 
                 content=ft.Row([
+                    ft.IconButton(ft.Icons.MENU, icon_color="#864430", on_click=abrir_menu_lateral),
+                    ft.Text("Bondify", size=24, weight="bold", color="#864430"),
+                    # Espaciador invisible para empujar los puntos a la derecha
+                    ft.Container(expand=True), 
                     ft.Container(
-                        content=ft.Image(src="menu_icono.png", width=35, height=35),
-                        on_click=abrir_menu,
-                        padding=5,
-                    ),
-                    ft.Text("Bondify", size=22, weight="bold", color="#864430")
+                        content=ft.Row([
+                            ft.Icon(ft.Icons.STARS, color="#3C7517", size=22),
+                            puntos_personales_texto
+                        ]),
+                        padding=ft.padding.only(right=10)
+                    )
                 ])
             ),
             
-            ft.Container(height=80), 
+            ft.Container(height=30), # Espacio
             
-            ft.Text(
-                f"¡Bienvenido,\n{nombre_a_mostrar}!", 
-                size=36, # Aumentamos el tamaño del saludo principal
-                weight="bold", 
-                color="#558B2F", 
-                text_align="center"
+            # SALUDO PERSONALIZADO
+            ft.Text(f"¡Hola, {nombre_a_mostrar}!", size=34, weight="bold", color="#558B2F", text_align="center"),
+            racha_familiar_texto,
+
+            ft.Container(height=50),
+
+            # EL NÚCLEO: LA MASCOTA QUE EVOLUCIONA
+            ft.Container(
+                content=imagen_mascota,
+                alignment=ft.Alignment(0, 0), # 0,0 es el centro exacto
+                on_hover=lambda e: setattr(imagen_mascota, "scale", 1.1 if e.data == "true" else 1.0) or page.update()
             ),
             
-            ft.Container(expand=True), 
+            ft.Container(expand=True), # Empuja el consejo hacia abajo
+            
+            # BARRA DE CONSEJO O ESTADO
+            ft.Container(
+                margin=25, 
+                padding=15, 
+                bgcolor="#E8F5E9", 
+                border_radius=15,
+                border=ft.border.all(1, "#388E3C"),
+                content=ft.Text(
+                    "¡Trabajen en equipo! Cada 15 actividades completadas, su racha familiar subirá de nivel.", 
+                    color="#2E7D32", 
+                    text_align="center", 
+                    italic=True,
+                    size=13
+                )
+            )
         ],
-        alignment=ft.MainAxisAlignment.START,
-        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+        horizontal_alignment="center",
         expand=True
     )
 
+    # Iniciamos la carga de datos apenas entramos
+    cargar_datos_pantalla()
+
+    # Devolvemos la vista en capas (Stack)
     return ft.Stack([
-        contenido_home,
-        capa_overlay_menu
+        columna_principal,
+        capa_oscura_overlay
     ], expand=True)

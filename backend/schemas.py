@@ -15,7 +15,7 @@ class UsuarioCreate(UsuarioBase):
 
 class Usuario(UsuarioBase):
     id_usuario: int
-    puntos: int
+    puntos: int # Puntos individuales para el ranking
 
     class Config:
         from_attributes = True
@@ -33,6 +33,12 @@ class UsuarioUpdate(BaseModel):
     biografia: Optional[str] = None
     disponibilidad_semanal: Optional[str] = None
 
+class UsuarioResumen(BaseModel):
+    id_usuario: int
+    nombre: str
+    class Config:
+        from_attributes = True
+
 # --- ESQUEMAS DE FAMILIA ---
 
 class FamiliaBase(BaseModel):
@@ -44,22 +50,26 @@ class FamiliaCreate(FamiliaBase):
 class FamiliaResponse(FamiliaBase):
     id_familia: int
     id_jefe: int
+    puntos_familia: int = 0 # IMPORTANTE: Para que el Home sepa el nivel inicial
     class Config:
         from_attributes = True
 
-# Este esquema es para los objetos individuales dentro de la lista de integrantes
 class MiembroFamilia(BaseModel):
     id_usuario: int
     nombre: str
     primer_nombre: Optional[str] = None
     rol: str
+    puntos: int = 0 # Para mostrar cuánto ha aportado cada uno
+    disponibilidad: Optional[str] = None
 
-# --- NUEVO: Esquema para la respuesta completa de la familia ---
 class FamiliaDetalle(BaseModel):
     nombre_familia: str
     id_jefe: int
+    puntos_familia: int = 0 # El motor de la racha
     integrantes: List[MiembroFamilia]
     mensaje: Optional[str] = None
+
+# --- ESQUEMAS DE ACTIVIDADES ---
 
 class ActividadBase(BaseModel):
     titulo: str
@@ -72,7 +82,8 @@ class ActividadCreate(ActividadBase):
 class ActividadResponse(ActividadBase):
     id_actividad: int
     es_sugerencia: bool
-    aprobada: bool
-    id_usuario_asignado: Optional[int]
+    terminada: bool = False # Para filtrar las que ya se calificaron
+    usuarios_asignados: List[UsuarioResumen] = [] 
+    
     class Config:
         from_attributes = True

@@ -6,63 +6,31 @@ def obtener_gestion_familia_view(page: ft.Page, volver_home, usuario_sesion):
     id_actual = usuario_sesion.get("id_usuario")
     es_jefe = usuario_sesion.get("tipo_usuario") == "Jefe"
     
-    # --- LA CLAVE: EL "CAJÓN" ---
-    # Usamos una lista [None] para que el ID se guarde aquí y todas 
-    # las funciones internas puedan verlo sin que se pierda.
+    # El cajón para el ID de la familia
     id_familia_actual = [None] 
 
-    # --- CAMPOS E INTERFAZ ---
-    txt_nombre_familia = ft.TextField(label="Nombre de la Familia", width=250, color="black", bgcolor="white")
-    txt_correo_miembro = ft.TextField(label="Correo del nuevo miembro", hint_text="usuario@correo.com", width=250, color="black", bgcolor="white")
-    lista_miembros = ft.Column(spacing=10)
+    # --- CONTROLES ---
+    txt_nombre_familia = ft.TextField(label="Nombre de la Familia", width=250, color="black", bgcolor="white", border_color="#3C7517")
+    txt_correo_miembro = ft.TextField(label="Correo del nuevo miembro", hint_text="ejemplo@correo.com", width=250, color="black", bgcolor="white", border_color="#3C7517")
+    lista_miembros = ft.Column(spacing=12)
     titulo_familia = ft.Text("Mi Familia", size=28, weight="bold", color="#3C7517")
 
-    # --- FUNCIÓN: DISOLVER GRUPO DIRECTO ---
-    def disolver_grupo_directo(e):
-        # Accedemos al valor dentro del cajón
-        id_fam = id_familia_actual
-        print(f"\n>>> DISOLVIENDO GRUPO DIRECTAMENTE. ID: {id_fam}")
-
-        if id_fam is None:
-            print("ERROR: No se encontró el ID de la familia (el cajón está vacío).")
-            return
-
-        try:
-            url = f"http://127.0.0.1:8000/familias/disolver/{id_fam}?id_jefe={id_actual}"
-            res = requests.delete(url)
-            
-            if res.status_code == 200:
-                page.snack_bar = ft.SnackBar(ft.Text("✅ Grupo familiar disuelto correctamente"), bgcolor="#3C7517")
-                page.snack_bar.open = True
-                page.update()
-                time.sleep(1)
-                volver_home() 
-            else:
-                print(f"Error al borrar: {res.status_code}")
-                page.snack_bar = ft.SnackBar(ft.Text(f"Error: {res.status_code}"), bgcolor="red")
-                page.snack_bar.open = True
-                page.update()
-        except Exception as ex:
-            print(f"Error conexión: {ex}")
-
-    # --- FUNCIÓN: CARGAR DATOS ---
     def cargar_datos_familia():
-        lista_miembros.controls.clear()
         try:
             res = requests.get(f"http://127.0.0.1:8000/familias/{id_actual}/integrantes")
             if res.status_code == 200:
                 datos = res.json()
-                print(f"DEBUG - Datos recibidos: {datos}")
-                
-                if datos["nombre_familia"] != "N/A":
-                    # IMPORTANTE: Guardamos el ID dentro del cajón
+                # Si el backend no devuelve N/A, es porque hay familia
+                if datos.get("nombre_familia") and datos["nombre_familia"] != "N/A":
+                    # CORRECCIÓN: Guardamos dentro del cajón real
                     id_familia_actual = datos.get("id_familia") 
-                    titulo_familia.value = datos["nombre_familia"]
+                    titulo_familia.value = f"Familia {datos['nombre_familia']}"
                     
+                    lista_miembros.controls.clear()
                     for m in datos["integrantes"]:
-                        # Solo el jefe ve el botón de borrar y no puede borrarse a sí mismo de la lista
+                        # No se puede borrar al jefe a sí mismo
                         btn_borrar = ft.IconButton(
-                            ft.Icons.DELETE_OUTLINE, 
+                            ft.Icons.PERSON_REMOVE_ALT_1, 
                             icon_color="red",
                             on_click=lambda e, id_m=m['id_usuario']: borrar_miembro_db(id_m)
                         ) if es_jefe and m['id_usuario'] != id_actual else ft.Container()
@@ -70,29 +38,53 @@ def obtener_gestion_familia_view(page: ft.Page, volver_home, usuario_sesion):
                         lista_miembros.controls.append(
                             ft.Container(
                                 content=ft.Row([
-                                    ft.Icon(ft.Icons.PERSON_OUTLINE, color="#7EB7AD"),
+                                    ft.Icon(ft.Icons.PERSON_PIN_ROUNDED, color="#3C7517", size=30),
                                     ft.Column([
-                                        ft.Text(f"{m['nombre']} {m['primer_nombre'] if m['primer_nombre'] else ''}", weight="bold", color="black"),
-                                        ft.Text(f"Rol: {m['rol']}", size=12, italic=True, color="grey"),
+                                        # Texto más oscuro (#212121) para que se vea bien
+                                        ft.Text(m['nombre'], weight="bold", color="#212121", size=16),
+                                        ft.Text(f"Rol: {m['rol']}", size=12, italic=True, color="#444444"),
                                     ], expand=True),
                                     btn_borrar
                                 ]),
-                                bgcolor="#F0F4F3", padding=10, border_radius=10
+                                bgcolor="#FFFFFF", 
+                                padding=15, 
+                                border_radius=12,
+                                border=ft.border.all(1, "#3C7517")
                             )
                         )
                 else:
-                    titulo_familia.value = "Aún no tienes familia"
+                    titulo_familia.value = "Crea tu grupo familiar"
                     if es_jefe:
+                        lista_miembros.controls.clear()
                         lista_miembros.controls.append(
                             ft.Column([
-                                ft.Text("Como Jefe, puedes crear tu grupo familiar aquí:", color="black"),
+                                ft.Text("Como Jefe, ponle un nombre a tu grupo:", color="#212121", size=16),
                                 txt_nombre_familia,
-                                ft.ElevatedButton("Crear Familia", icon=ft.Icons.GROUP_ADD, on_click=crear_familia_db)
-                            ])
+                                ft.ElevatedButton("Crear Grupo", icon=ft.Icons.GROUP_ADD, on_click=crear_familia_db, bgcolor="#3C7517", color="white")
+                            ], spacing=15)
                         )
             page.update()
         except Exception as ex:
             print(f"Error cargando familia: {ex}")
+
+    def disolver_grupo_directo(e):
+        # CORRECCIÓN: Sacamos el ID del cajón
+        id_fam = id_familia_actual 
+        if id_fam is None:
+            return
+
+        try:
+            # La URL debe ser exacta a la del backend
+            url = f"http://127.0.0.1:8000/familias/disolver/{id_fam}?id_jefe={id_actual}"
+            res = requests.delete(url)
+            if res.status_code == 200:
+                page.snack_bar = ft.SnackBar(ft.Text("✅ Grupo disuelto. Volviendo al inicio..."), bgcolor="#3C7517")
+                page.snack_bar.open = True
+                page.update()
+                time.sleep(1.5)
+                volver_home(None)
+        except Exception as ex:
+            print(f"Error disolver: {ex}")
 
     def crear_familia_db(e):
         if not txt_nombre_familia.value: return
@@ -106,9 +98,11 @@ def obtener_gestion_familia_view(page: ft.Page, volver_home, usuario_sesion):
         res = requests.post(f"http://127.0.0.1:8000/familias/miembros/?correo={txt_correo_miembro.value}&id_jefe={id_actual}")
         if res.status_code == 200:
             txt_correo_miembro.value = ""
+            page.snack_bar = ft.SnackBar(ft.Text("✅ Miembro añadido"), bgcolor="#3C7517")
+            page.snack_bar.open = True
             cargar_datos_familia()
         else:
-            page.snack_bar = ft.SnackBar(ft.Text("Usuario no encontrado o ya tiene familia"), bgcolor="red")
+            page.snack_bar = ft.SnackBar(ft.Text("❌ Usuario no encontrado o ya tiene grupo"), bgcolor="red")
             page.snack_bar.open = True
             page.update()
 
@@ -117,41 +111,43 @@ def obtener_gestion_familia_view(page: ft.Page, volver_home, usuario_sesion):
         if res.status_code == 200:
             cargar_datos_familia()
 
-    # Carga inicial para llenar la lista apenas entras
+    # Carga automática al entrar
     cargar_datos_familia()
 
-    # --- DISEÑO FINAL ---
     return ft.Container(
         content=ft.Column([
             ft.Row([
-                ft.IconButton(ft.Icons.ARROW_BACK, on_click=volver_home, icon_color="#7EB7AD"),
+                ft.IconButton(ft.Icons.ARROW_BACK_IOS_NEW, on_click=volver_home, icon_color="#3C7517", icon_size=20),
                 titulo_familia
             ]),
-            ft.Divider(),
-            ft.Text("Integrantes del grupo:", size=16, weight="bold", color="black"),
+            ft.Divider(color="#3C7517", thickness=1.5),
+            
+            ft.Text("Integrantes actuales:", size=18, weight="bold", color="#212121"),
             lista_miembros,
             
-            # Botón Disolver (Solo visible para el Jefe)
+            # Botón Disolver (Solo Jefe)
             ft.Container(
                 content=ft.ElevatedButton(
                     "Disolver Grupo Familiar", 
                     icon=ft.Icons.DELETE_FOREVER, 
-                    bgcolor="red", color="white",
-                    on_click=disolver_grupo_directo 
+                    bgcolor="#B71C1C", color="white",
+                    on_click=disolver_grupo_directo,
+                    width=400, height=45
                 ),
-                padding=ft.padding.only(top=10, bottom=10),
-                visible=es_jefe
+                visible=es_jefe,
+                padding=ft.padding.only(top=20)
             ) if es_jefe else ft.Container(),
             
-            # Sección Agregar Integrante (Solo para el Jefe)
+            # Sección Agregar (Solo Jefe)
             ft.Column([
-                ft.Divider(),
-                ft.Text("Agregar nuevo integrante:", size=16, weight="bold", color="black"),
+                ft.Divider(height=40),
+                ft.Text("Agregar por correo:", size=18, weight="bold", color="#212121"),
                 ft.Row([
                     txt_correo_miembro, 
-                    ft.FloatingActionButton(icon=ft.Icons.ADD, on_click=agregar_miembro_db, bgcolor="#7EB7AD")
+                    ft.FloatingActionButton(icon=ft.Icons.ADD, on_click=agregar_miembro_db, bgcolor="#3C7517")
                 ])
-            ]) if es_jefe else ft.Container()
+            ], visible=es_jefe) if es_jefe else ft.Container()
+            
         ], expand=True, scroll=ft.ScrollMode.AUTO),
         padding=20
     )
