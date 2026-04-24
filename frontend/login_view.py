@@ -10,6 +10,7 @@ def obtener_login_view(page, volver_bienvenida, ir_a_home):
         color="black",
         label_style=ft.TextStyle(color="#558B2F"),
     )
+    page.vertical_alignment = ft.MainAxisAlignment.CENTER
     
     clave_tf = ft.TextField(
         label="Contraseña", 
@@ -38,23 +39,28 @@ def obtener_login_view(page, volver_bienvenida, ir_a_home):
         print(f"Intentando conectar con: {payload}")
         
         try:
+            # Conexión al backend (Asegúrate de que el backend esté corriendo en el puerto 8000)
             res = requests.post("http://localhost:8000/login/", json=payload, timeout=5)
             
             if res.status_code == 200:
                 datos = res.json()
                 
-                # --- LA FORMA MÁS SEGURA ---
+                # --- CAPTURA DE DATOS DESDE EL BACKEND ---
                 usuario_raw = datos.get('usuario')
-                
-                # Si es una lista, convertimos a string directamente antes de enviar
+                rol_final = datos.get('rol')
+                id_usuario_final = datos.get('id_usuario') # <-- AQUÍ ATRAPAMOS EL ID
+
+                # Limpieza del nombre (por si llega como lista)
                 if isinstance(usuario_raw, list):
-                    # Esto convierte ["Yulian", "Esteban"] a "Yulian" directamente
-                    nombre_final = str(usuario_raw)
+                    nombre_final = str(usuario_raw) # Toma el primer elemento si es lista
                 else:
                     nombre_final = str(usuario_raw)
                 
-                print(f"DEBUG: Enviando a home: {nombre_final}")
-                ir_a_home(nombre_final, datos.get('rol'))
+                print(f"DEBUG: Login exitoso. ID: {id_usuario_final}, Nombre: {nombre_final}")
+                
+                # --- ENVIAMOS LOS 3 DATOS AL MAIN.PY ---
+                # Ahora ir_a_home recibe: nombre, rol, id_usuario
+                ir_a_home(nombre_final, rol_final, id_usuario_final)
                 
             else:
                 error_det = res.json()
