@@ -14,11 +14,11 @@ def obtener_calendario_view(page, volver_home):
             ),
             
             ft.Container(height=20),
-            ft.Text("Vista de Calendario", size=24, weight="bold", color="#558B2F"),
+            ft.Text("PROXIMAMENTEEE", size=24, weight="bold", color="#558B2F"),
             
             # Placeholder para el calendario
             ft.Container(
-                content=ft.Text("Aquí irá el calendario", size=18, color="grey"),
+                content=ft.Text("pROXIMO", size=18, color="grey"),
                 alignment="center",
                 padding=50
             ),
