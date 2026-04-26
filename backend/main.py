@@ -4,6 +4,7 @@ from backend import crud, models, schemas
 from backend.database import SessionLocal, engine
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, List
+from datetime import date # AGREGADO PARA EL MURO
 
 # 1. Conexión y creación de tablas
 models.Base.metadata.create_all(bind=engine)
@@ -133,15 +134,39 @@ def borrar_miembro(usuario_id_a_borrar: int, id_jefe: int = Query(...), db: Sess
     db.commit()
     return {"mensaje": "Miembro removido"}
 
+# --- CIRUGÍA: RUTA DE DISOLVER ACTUALIZADA (ORDEN DE LIMPIEZA TOTAL) ---
 @app.delete("/familias/disolver/{id_familia}")
 def disolver_familia(id_familia: int, id_jefe: int, db: Session = Depends(get_db)):
-    familia = db.query(models.Familia).filter(models.Familia.id_familia == id_familia, models.Familia.id_jefe == id_jefe).first()
+    print(f"SISTEMA: Intento de disolución - Familia: {id_familia} por Jefe: {id_jefe}")
+    
+    familia = db.query(models.Familia).filter(
+        models.Familia.id_familia == id_familia, 
+        models.Familia.id_jefe == id_jefe
+    ).first()
+    
     if not familia:
+        print("SISTEMA: Error - No se encontró la familia o no es el jefe real.")
         raise HTTPException(status_code=403, detail="No tienes permiso")
-    db.query(models.Usuario).filter(models.Usuario.id_familia == id_familia).update({"id_familia": None})
-    db.delete(familia)
-    db.commit()
-    return {"mensaje": "Grupo familiar disuelto."}
+    
+    try:
+        # 1. Desvincular usuarios (Ponemos su id_familia en NULL)
+        db.query(models.Usuario).filter(models.Usuario.id_familia == id_familia).update({"id_familia": None})
+        
+        # 2. Borrar mensajes del muro vinculados
+        db.query(models.MuroMensaje).filter(models.MuroMensaje.id_familia == id_familia).delete()
+        
+        # 3. Borrar actividades vinculadas
+        db.query(models.Actividad).filter(models.Actividad.id_familia == id_familia).delete()
+        
+        # 4. Ahora sí, borrar la familia del registro
+        db.delete(familia)
+        db.commit()
+        print(f"SISTEMA: ¡Familia {id_familia} disuelta con éxito!")
+        return {"mensaje": "Grupo familiar disuelto correctamente."}
+    except Exception as e:
+        db.rollback()
+        print(f"SISTEMA: Error crítico al disolver -> {e}")
+        raise HTTPException(status_code=500, detail="Error de integridad en la base de datos")
 
 # --- RUTAS DE ACTIVIDADES ---
 
@@ -163,39 +188,35 @@ def listar_actividades(id_familia: int, db: Session = Depends(get_db)):
             "descripcion": a.descripcion,
             "es_sugerencia": a.es_sugerencia,
             "terminada": a.terminada,
-            "fecha": a.fecha, # <-- ACTUALIZADO: Para que el frontend vea el día
+            "fecha": a.fecha, 
             "usuarios_asignados": [{"id_usuario": u.id_usuario, "nombre": u.nombre} for u in a.usuarios_asignados]
         })
     return resultado
 
-# NUEVA RUTA PARA EL CALENDARIO MENSUAL
 @app.get("/familias/{id_familia}/actividades/mes/{mes}/{anio}")
 def obtener_calendario_mensual(id_familia: int, mes: int, anio: int, db: Session = Depends(get_db)):
     return crud.obtener_actividades_por_mes(db, id_familia, mes, anio)
 
-# LÓGICA DE FINALIZACIÓN MEJORADA (RACHA INDIVIDUAL Y FAMILIAR)
 @app.put("/actividades/{id_actividad}/finalizar")
 def finalizar_actividad(id_actividad: int, participaciones: Dict[str, bool] = Body(...), db: Session = Depends(get_db)):
     act = db.query(models.Actividad).filter(models.Actividad.id_actividad == id_actividad).first()
     if not act: raise HTTPException(status_code=404)
     fam = db.query(models.Familia).filter(models.Familia.id_familia == act.id_familia).first()
     
-    # Detectamos si al menos una persona cumplió para considerar la actividad lograda
     actividad_exitosa = any(participaciones.values())
     
     for uid_str, cumplio in participaciones.items():
         user = db.query(models.Usuario).filter(models.Usuario.id_usuario == int(uid_str)).first()
         if user:
             if cumplio:
-                user.puntos += 5  # +5 Puntos individuales (Racha positiva)
+                user.puntos += 5 
             else:
-                user.puntos -= 5  # -5 Puntos individuales (Castigo por no ayudar)
+                user.puntos -= 5 
 
-    # Lógica de Racha Familiar (Mascota)
     if actividad_exitosa:
-        fam.puntos_familia += 1   # Sube el nivel de la mascota
+        fam.puntos_familia += 1 
     else:
-        fam.puntos_familia -= 1   # Baja el nivel si el jefe marca que nadie lo hizo (X)
+        fam.puntos_familia -= 1 
 
     if fam.puntos_familia < 0: fam.puntos_familia = 0
     act.terminada = True
@@ -229,3 +250,32 @@ def borrar_actividad(id_actividad: int, db: Session = Depends(get_db)):
     db.delete(act)
     db.commit()
     return {"mensaje": "Eliminada"}
+
+# --- RUTAS DEL MURO FAMILIAR ---
+
+@app.post("/familias/{id_familia}/muro", response_model=schemas.MuroResponse)
+def publicar_mensaje_muro(id_familia: int, mensaje: schemas.MuroCreate, db: Session = Depends(get_db)):
+    hoy_str = date.today().isoformat() 
+    
+    nuevo_mensaje = models.MuroMensaje(
+        id_familia=id_familia,
+        autor=mensaje.autor,
+        contenido=mensaje.contenido,
+        tipo=mensaje.tipo,
+        fecha=hoy_str
+    )
+    
+    db.add(nuevo_mensaje)
+    db.commit()
+    db.refresh(nuevo_mensaje)
+    return nuevo_mensaje
+
+@app.get("/familias/{id_familia}/muro", response_model=List[schemas.MuroResponse])
+def obtener_mensajes_muro_hoy(id_familia: int, db: Session = Depends(get_db)):
+    hoy_str = date.today().isoformat()
+    mensajes = db.query(models.MuroMensaje).filter(
+        models.MuroMensaje.id_familia == id_familia,
+        models.MuroMensaje.fecha == hoy_str
+    ).all()
+    
+    return mensajes

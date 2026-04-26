@@ -2,8 +2,9 @@ import flet as ft
 import datetime
 import json
 import os
+import requests # <-- Agregado para conectar con la DB
 
-# --- RUTA DEL ARCHIVO DONDE SE GUARDARÁN LOS MENSAJES ---
+# --- RUTA DEL ARCHIVO DONDE SE GUARDARÁN LOS MENSAJES (MANTENIDO) ---
 ARCHIVO_MENSAJES = "historial_muro.json"
 
 def cargar_mensajes_disco():
@@ -27,23 +28,20 @@ def guardar_mensajes_disco(mensajes):
 def obtener_familia_view(page: ft.Page, volver_home, usuario_sesion):
     # --- CONFIGURACIÓN Y ESTADO ---
     nombre_usuario = usuario_sesion.get("nombre") or "Miembro de la familia"
-    hoy_str = datetime.date.today().isoformat() # Ej: "2026-04-25"
+    id_familia = usuario_sesion.get("id_familia")
+    id_usuario_logueado = usuario_sesion.get("id_usuario") # Lo necesitamos para consultar el nivel real
+    hoy_str = datetime.date.today().isoformat() 
     
     estado = {
         "nivel_mascota": 3, 
     }
 
-    # --- PERSISTENCIA LOCAL INFALIBLE ---
-    # 1. Leemos el archivo JSON físico
+    # --- PERSISTENCIA LOCAL (MANTENIDA) ---
     mensajes_guardados = cargar_mensajes_disco()
-        
-    # 2. LA MAGIA DE LAS 24 HORAS: Filtramos y nos quedamos SOLO con los de hoy.
     mensajes_activos = [m for m in mensajes_guardados if m.get("fecha") == hoy_str]
-    
-    # 3. Guardamos la lista limpia de vuelta (así borramos para siempre los de ayer del archivo)
     guardar_mensajes_disco(mensajes_activos)
 
-    # --- 7 MENSAJES MOTIVACIONALES POR NIVEL ---
+    # --- 7 MENSAJES MOTIVACIONALES POR NIVEL (MANTENIDO) ---
     mensajes_niveles = {
         1: "¡Bienvenidos a la aventura! La semilla del amor familiar ha sido plantada. 🌱",
         2: "¡Van por buen camino! El trabajo en equipo empieza a dar frutos. 🌿",
@@ -54,10 +52,12 @@ def obtener_familia_view(page: ft.Page, volver_home, usuario_sesion):
         7: "¡Felicidades, familia legendaria! Han alcanzado la máxima armonía. 👑"
     }
 
-    nivel_seguro = max(1, min(7, estado["nivel_mascota"]))
-    mensaje_actual = mensajes_niveles[nivel_seguro]
+    puntos_fam = usuario_sesion.get("puntos_familia") or 0
+    # ACTUALIZADO: Divisor a 15 para coincidir con Home
+    nivel_calculado = max(1, min(7, (puntos_fam // 15) + 1))
+    mensaje_actual = mensajes_niveles.get(nivel_calculado, mensajes_niveles)
 
-    # --- CONTENEDORES VISUALES ---
+    # --- CONTENEDORES VISUALES (MANTENIDOS) ---
     lista_mensajes = ft.Column(spacing=10, scroll=ft.ScrollMode.ALWAYS, expand=True)
     
     txt_mensaje = ft.TextField(
@@ -68,7 +68,12 @@ def obtener_familia_view(page: ft.Page, volver_home, usuario_sesion):
         border_color="#3C7517"
     )
 
-    # --- FUNCIÓN: RENDERIZAR UN MENSAJE EN PANTALLA ---
+    # --- CONTROLES DE TEXTO PARA ACTUALIZACIÓN DINÁMICA (NUEVO) ---
+    # Estos permiten que el nivel cambie sin recargar toda la vista
+    txt_nivel_display = ft.Text(f"Nivel de la Mascota: {nivel_calculado}", size=20, weight="bold", color="#3C7517")
+    txt_motivacion_display = ft.Text(mensaje_actual, size=14, italic=True, color="#5D4037", weight="w500", text_align=ft.TextAlign.CENTER)
+
+    # --- FUNCIÓN: RENDERIZAR UN MENSAJE (MANTENIDO) ---
     def dibujar_mensaje(msg):
         if msg["tipo"] == "emoji":
             return ft.Container(
@@ -84,11 +89,37 @@ def obtener_familia_view(page: ft.Page, volver_home, usuario_sesion):
                 ], spacing=2)
             )
 
-    # 4. Pintamos los mensajes que sobrevivieron al filtro
-    for m in mensajes_activos:
-        lista_mensajes.controls.append(dibujar_mensaje(m))
+    # --- NUEVA FUNCIÓN: CARGAR DESDE DB (MANTENIDO) ---
+    def cargar_muro_db():
+        if not id_familia: return
+        try:
+            r = requests.get(f"http://127.0.0.1:8000/familias/{id_familia}/muro", timeout=2)
+            if r.status_code == 200:
+                mensajes_db = r.json()
+                lista_mensajes.controls.clear()
+                for m in mensajes_db:
+                    lista_mensajes.controls.append(dibujar_mensaje(m))
+                page.update()
+        except: pass
 
-    # --- FUNCIÓN: ENVIAR EMOJI ---
+    # --- NUEVA FUNCIÓN: REFRESCAR NIVEL REAL (AGREGADO PARA EL NIVEL 3) ---
+    def refrescar_nivel_desde_db():
+        try:
+            # Usamos la misma URL que el Home para traer los puntos reales
+            res = requests.get(f"http://127.0.0.1:8000/familias/{id_usuario_logueado}/integrantes", timeout=2)
+            if res.status_code == 200:
+                datos = res.json()
+                puntos_reales = datos.get("puntos_familia", 0)
+                # Aplicamos la matemática del Home
+                nuevo_nivel = (puntos_reales // 15) + 1
+                if nuevo_nivel > 7: nuevo_nivel = 7
+                
+                txt_nivel_display.value = f"Nivel de la Mascota: {nuevo_nivel}"
+                txt_motivacion_display.value = mensajes_niveles.get(nuevo_nivel, mensajes_niveles)
+                page.update()
+        except: pass
+
+    # --- FUNCIÓN: ENVIAR EMOJI (ACTUALIZADA PARA DB + DISCO) ---
     def enviar_emoji(emoji_seleccionado):
         nuevo_msg = {
             "tipo": "emoji", 
@@ -97,15 +128,16 @@ def obtener_familia_view(page: ft.Page, volver_home, usuario_sesion):
             "fecha": hoy_str 
         }
         mensajes_activos.append(nuevo_msg)
-        guardar_mensajes_disco(mensajes_activos) # ¡GUARDAMOS EN EL ARCHIVO!
-        
-        lista_mensajes.controls.append(dibujar_mensaje(nuevo_msg))
+        guardar_mensajes_disco(mensajes_activos)
+        if id_familia:
+            try: requests.post(f"http://127.0.0.1:8000/familias/{id_familia}/muro", json=nuevo_msg, timeout=2)
+            except: pass
+        cargar_muro_db()
         page.update()
 
-    # --- FUNCIÓN: ENVIAR TEXTO ---
+    # --- FUNCIÓN: ENVIAR TEXTO (ACTUALIZADA PARA DB + DISCO) ---
     def enviar_texto(e):
         if not txt_mensaje.value.strip(): return
-        
         nuevo_msg = {
             "tipo": "texto", 
             "autor": nombre_usuario, 
@@ -113,34 +145,31 @@ def obtener_familia_view(page: ft.Page, volver_home, usuario_sesion):
             "fecha": hoy_str 
         }
         mensajes_activos.append(nuevo_msg)
-        guardar_mensajes_disco(mensajes_activos) # ¡GUARDAMOS EN EL ARCHIVO!
-        
-        lista_mensajes.controls.append(dibujar_mensaje(nuevo_msg))
+        guardar_mensajes_disco(mensajes_activos)
+        if id_familia:
+            try: requests.post(f"http://127.0.0.1:8000/familias/{id_familia}/muro", json=nuevo_msg, timeout=2)
+            except: pass
         txt_mensaje.value = "" 
+        cargar_muro_db()
         page.update()
 
+    # Cargas iniciales
+    refrescar_nivel_desde_db() # Primero refrescamos el nivel real
+    cargar_muro_db()
+
     # --- UI: SECCIÓN DE LA MASCOTA ---
-    txt_nivel = ft.Text(f"Nivel de la Mascota: {estado['nivel_mascota']}", size=20, weight="bold", color="#3C7517")
-    
     panel_mascota = ft.Container(
         padding=20, bgcolor="#F1F8E9", border_radius=15, border=ft.border.all(2, "#3C7517"),
         content=ft.Column([
             ft.Row([
                 ft.Icon(ft.Icons.PETS, color="#3C7517", size=40),
-                txt_nivel,
+                txt_nivel_display, # Usamos el control dinámico
             ], alignment=ft.MainAxisAlignment.CENTER),
-            ft.Text(
-                mensaje_actual, 
-                size=14, 
-                italic=True, 
-                color="#5D4037", 
-                weight="w500",
-                text_align=ft.TextAlign.CENTER
-            )
+            txt_motivacion_display # Usamos el control dinámico
         ], horizontal_alignment=ft.CrossAxisAlignment.CENTER)
     )
 
-    # --- UI: SECCIÓN DE EMOJIS ---
+    # --- UI: SECCIÓN DE EMOJIS (MANTENIDO) ---
     panel_emojis = ft.Container(
         padding=10, bgcolor="white", border_radius=10, border=ft.border.all(1, "#E0E0E0"),
         content=ft.Column([
@@ -155,7 +184,7 @@ def obtener_familia_view(page: ft.Page, volver_home, usuario_sesion):
         ])
     )
 
-    # --- RETORNO DE LA VISTA COMPLETA ---
+    # --- RETORNO DE LA VISTA COMPLETA (MANTENIDO) ---
     return ft.Container(
         padding=20, expand=True,
         content=ft.Column([

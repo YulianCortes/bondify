@@ -8,10 +8,12 @@ def obtener_actividades_view(page: ft.Page, volver_home, usuario_sesion):
     id_actual = usuario_sesion.get("id_usuario")
     es_jefe = usuario_sesion.get("tipo_usuario") == "Jefe"
     
+    # --- CIRUGÍA DE PRECISIÓN: Sincronización con la fecha real ---
+    # Cambiamos el 25 fijo por .today() para que no se desfase con el calendario
     estado = {
         "id_familia": None, 
         "miembros": [],
-        "fecha_seleccionada": datetime.date(2026, 4, 25) 
+        "fecha_seleccionada": datetime.date.today() 
     }
 
     catalogo_items = [
@@ -32,21 +34,15 @@ def obtener_actividades_view(page: ft.Page, volver_home, usuario_sesion):
     txt_jefe_titulo = ft.TextField(label="Título de la tarea", bgcolor="white", color="#212121", border_color="#3C7517")
     txt_jefe_desc = ft.TextField(label="Descripción", bgcolor="white", color="#212121", multiline=True, border_color="#3C7517")
 
-    # --- TEXTO INDEPENDIENTE (Para que Flet se vea obligado a cambiarlo) ---
+    # --- TEXTO INDEPENDIENTE (Tu lógica intacta) ---
     texto_fecha_dinamico = ft.Text(f"Día: {estado['fecha_seleccionada'].strftime('%d/%m/%Y')}", color="#3C7517", weight="bold")
 
     def cambiar_fecha(e):
         if e.control.value:
-            # 1. Actualizamos la memoria
             fecha_nueva = e.control.value
             estado["fecha_seleccionada"] = fecha_nueva.date() if hasattr(fecha_nueva, "date") else fecha_nueva
-            
-            # 2. Actualizamos el componente de texto
             texto_fecha_dinamico.value = f"Día: {estado['fecha_seleccionada'].strftime('%d/%m/%Y')}"
-            
-            # 3. Forzamos el refresco
             texto_fecha_dinamico.update()
-            
             try:
                 date_picker.open = False
                 date_picker.update()
@@ -55,18 +51,18 @@ def obtener_actividades_view(page: ft.Page, volver_home, usuario_sesion):
 
     date_picker = ft.DatePicker(
         on_change=cambiar_fecha,
+        value=datetime.datetime.now(), # Para que el selector también inicie en hoy
         first_date=datetime.datetime(2026, 1, 1),
         last_date=datetime.datetime(2026, 12, 31),
     )
     if date_picker not in page.overlay:
         page.overlay.append(date_picker)
 
-    # --- BOTÓN CENTRADO CON TEXTO DINÁMICO ---
     btn_fecha = ft.ElevatedButton(
         content=ft.Row([ft.Icon(ft.Icons.CALENDAR_MONTH, color="#3C7517"), texto_fecha_dinamico], alignment=ft.MainAxisAlignment.CENTER, spacing=5),
         on_click=lambda _: [setattr(date_picker, "open", True), page.update()],
         bgcolor="white",
-        width=250 # Tamaño fijo elegante
+        width=250 
     )
 
     def abrir_calificacion(actividad):

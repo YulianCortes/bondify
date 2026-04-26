@@ -162,3 +162,26 @@ def finalizar_actividad_y_puntos(db: Session, id_actividad: int, participaciones
     actividad.terminada = True
     db.commit()
     return actividad
+
+# --- 9. ADICIÓN: LÓGICA PARA EL MURO FAMILIAR ---
+
+def crear_mensaje_muro(db: Session, id_familia: int, mensaje: schemas.MuroCreate):
+    hoy_str = date.today().isoformat()
+    nuevo_mensaje = models.MuroMensaje(
+        id_familia=id_familia,
+        autor=mensaje.autor,
+        contenido=mensaje.contenido,
+        tipo=mensaje.tipo,
+        fecha=hoy_str
+    )
+    db.add(nuevo_mensaje)
+    db.commit()
+    db.refresh(nuevo_mensaje)
+    return nuevo_mensaje
+
+def obtener_mensajes_muro_hoy(db: Session, id_familia: int):
+    hoy_str = date.today().isoformat()
+    return db.query(models.MuroMensaje).filter(
+        models.MuroMensaje.id_familia == id_familia,
+        models.MuroMensaje.fecha == hoy_str
+    ).all()

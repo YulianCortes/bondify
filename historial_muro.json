@@ -1,32 +1,20 @@
 [
     {
+        "tipo": "texto",
+        "autor": "Yulian Esteban Jaramillo Arias",
+        "contenido": "awdawdawdawd",
+        "fecha": "2026-04-26"
+    },
+    {
         "tipo": "emoji",
         "autor": "Yulian Esteban Jaramillo Arias",
         "contenido": "😴 Cansado",
-        "fecha": "2026-04-25"
-    },
-    {
-        "tipo": "texto",
-        "autor": "Yulian Esteban Jaramillo Arias",
-        "contenido": "adwadad",
-        "fecha": "2026-04-25"
-    },
-    {
-        "tipo": "texto",
-        "autor": "Yulian Esteban Jaramillo Arias",
-        "contenido": "ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
-        "fecha": "2026-04-25"
+        "fecha": "2026-04-26"
     },
     {
         "tipo": "emoji",
-        "autor": "Luisa Camila Cordoba Figueroa",
-        "contenido": "😴 Cansado",
-        "fecha": "2026-04-25"
-    },
-    {
-        "tipo": "texto",
-        "autor": "Luisa Camila Cordoba Figueroa",
-        "contenido": "qvfg",
-        "fecha": "2026-04-25"
+        "autor": "Yulian Esteban Jaramillo Arias",
+        "contenido": "😡 Estresado",
+        "fecha": "2026-04-26"
     }
 ]

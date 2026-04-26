@@ -91,3 +91,18 @@ class ActividadResponse(ActividadBase):
     
     class Config:
         from_attributes = True
+
+# --- NUEVOS ESQUEMAS: MURO FAMILIAR ---
+
+class MuroCreate(BaseModel):
+    autor: str
+    contenido: str
+    tipo: str # "texto" o "emoji"
+
+class MuroResponse(MuroCreate):
+    id_mensaje: int
+    id_familia: int
+    fecha: str
+    
+    class Config:
+        from_attributes = True

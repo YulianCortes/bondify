@@ -23,8 +23,11 @@ class Familia(Base):
     # Relación: Una familia tiene muchos miembros
     miembros = relationship("Usuario", back_populates="familia", foreign_keys="[Usuario.id_familia]")
     
-    # Una familia tiene muchas actividades
-    actividades = relationship("Actividad", back_populates="familia")
+    # --- CIRUGÍA: Actualizado con cascade para permitir disolver ---
+    actividades = relationship("Actividad", back_populates="familia", cascade="all, delete-orphan")
+    
+    # --- CIRUGÍA: Actualizado con cascade para permitir disolver ---
+    mensajes_muro = relationship("MuroMensaje", back_populates="familia", cascade="all, delete-orphan")
 
 class Usuario(Base):
     __tablename__ = "usuarios"
@@ -82,3 +85,18 @@ class Actividad(Base):
     
     # Relación Muchos a Muchos con Usuarios (EQUIPO)
     usuarios_asignados = relationship("Usuario", secondary="asignaciones_actividades", back_populates="actividades_asignadas")
+
+
+# --- NUEVA TABLA: MURO FAMILIAR ---
+class MuroMensaje(Base):
+    __tablename__ = "muro_mensajes"
+    
+    id_mensaje = Column(Integer, primary_key=True, index=True)
+    id_familia = Column(Integer, ForeignKey("familias.id_familia", ondelete="CASCADE"))
+    autor = Column(String(100))
+    contenido = Column(Text)
+    tipo = Column(String(20)) # Se guardará como "texto" o "emoji"
+    fecha = Column(String(20)) # Se guardará como "YYYY-MM-DD" para filtrar el día exacto
+    
+    # Relaciones
+    familia = relationship("Familia", back_populates="mensajes_muro")
