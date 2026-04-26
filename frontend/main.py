@@ -29,12 +29,12 @@ def main(page: ft.Page):
     page.vertical_alignment = "start"
 
     # --- MEMORIA DE SESIÓN CENTRALIZADA ---
-    # Usamos 'tipo_usuario' para que coincida 100% con el Backend
     sesion = {
         "nombre": None, 
         "tipo_usuario": None, 
         "id_usuario": None, 
-        "primer_nombre": None
+        "primer_nombre": None,
+        "id_familia": None # Agregamos esto para facilitar el calendario
     }
 
     # 1. Barra de navegación inferior
@@ -62,9 +62,8 @@ def main(page: ft.Page):
     def ir_a_configuracion(e): navegar("configuracion")
     def ir_a_gestion_familia(e): navegar("gestion_familia")
 
-    # 3. Función maestra de navegación (REPARADA)
+    # 3. Función maestra de navegación (ACTUALIZADA)
     def navegar(destino, nombre=None, rol=None, id_usuario=None, primer_nombre=None):
-        # Actualizamos la memoria global con lo que recibamos
         if nombre: sesion["nombre"] = nombre
         if rol: sesion["tipo_usuario"] = rol 
         if id_usuario: sesion["id_usuario"] = id_usuario
@@ -72,16 +71,16 @@ def main(page: ft.Page):
         
         page.clean()
         
-        # Sincronización rápida con el servidor para evitar que se pierda el nombre
-        if destino == "home" and sesion["id_usuario"]:
+        # Sincronización rápida para el nombre y la familia
+        if sesion["id_usuario"]:
             try:
                 r = requests.get(f"http://127.0.0.1:8000/usuarios/{sesion['id_usuario']}/perfil", timeout=1)
                 if r.status_code == 200:
                     datos_p = r.json()
                     sesion["primer_nombre"] = datos_p.get("primer_nombre")
+                    sesion["id_familia"] = datos_p.get("id_familia") # Sincronizamos ID familia
             except: pass
 
-        # Parámetros listos para las vistas
         nombre_act = sesion["nombre"]
         rol_act = sesion["tipo_usuario"]
         id_act = sesion["id_usuario"]
@@ -93,48 +92,44 @@ def main(page: ft.Page):
                 ir_a_bienvenida, ir_a_familia, ir_a_actividades, 
                 ir_a_calendario, ir_a_perfil, ir_a_mis_actividades, 
                 ir_a_configuracion, ir_a_gestion_familia,
-                sesion, # Pasamos el diccionario completo para la racha
+                sesion, 
                 primer_nombre=p_nombre_act
             ))
         
         elif destino == "familia":
-            page.add(obtener_familia_view(page, lambda e: navegar("home")))
+            # --- CIRUGÍA AQUÍ: Pasamos 'sesion' como tercer argumento ---
+            page.add(obtener_familia_view(page, lambda e: navegar("home"), sesion))
         
         elif destino == "gestion_familia":
-            # Pasamos la sesión para que el botón de borrar tenga el id_jefe
             page.add(obtener_gestion_familia_view(page, lambda e: navegar("home"), sesion))
         
         elif destino == "actividades" or destino == "mis_actividades":
-            # Pasamos la sesión para que reconozca el rol de Jefe
             page.add(obtener_actividades_view(page, lambda e: navegar("home"), sesion))
         
         elif destino == "calendario":
-            page.add(obtener_calendario_view(page, lambda e: navegar("home")))
+            page.add(obtener_calendario_view(page, lambda e: navegar("home"), sesion))
         
         elif destino == "perfil":
-            # --- NUEVA LÓGICA: CARGAR DATOS REALES DE LA DB ---
             datos_perfil_completos = sesion.copy() 
             try:
                 respuesta_perfil = requests.get(f"http://127.0.0.1:8000/usuarios/{sesion['id_usuario']}/perfil", timeout=2)
                 if respuesta_perfil.status_code == 200:
                     datos_perfil_completos = respuesta_perfil.json()
-                    # Nos aseguramos de mantener el rol y el id por si el json del perfil no los trae
                     datos_perfil_completos["id_usuario"] = sesion["id_usuario"]
                     datos_perfil_completos["tipo_usuario"] = sesion["tipo_usuario"]
             except Exception as e:
                 print(f"Error cargando datos del perfil: {e}")
 
-            # FIX p_n: Hacemos que el parámetro sea opcional para evitar el error rojo
             page.add(obtener_perfil_view(
                 page, 
                 lambda p_n=None: navegar("home", primer_nombre=p_n), 
-                datos_perfil_completos # <--- Pasamos el diccionario con TODO (edad, apellido, etc.)
+                datos_perfil_completos 
             ))
         
         elif destino == "configuracion":
-            page.add(obtener_configuracion_view(page, lambda e: navegar("home")))
+            # --- CIRUGÍA AQUÍ: Añadimos ir_a_bienvenida y sesion ---
+            page.add(obtener_configuracion_view(page, lambda e: navegar("home"), ir_a_bienvenida, sesion))
         
-        # Mostrar barra solo en las pantallas principales
         if destino not in ["bienvenida", "login", "registro", "perfil", "configuracion", "gestion_familia"]:
             page.add(crear_barra())
         
@@ -160,8 +155,6 @@ def main(page: ft.Page):
         page.add(obtener_bienvenida_view(page, ir_a_registro, ir_a_login))
         page.update()
 
-    # Lanzar la app
     ir_a_bienvenida(None)
 
-# Importante: assets_dir permite que Flet encuentre tus .jpeg de la mascota
 ft.app(target=main, assets_dir="assets")

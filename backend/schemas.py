@@ -1,5 +1,6 @@
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
+from datetime import date
 
 # --- ESQUEMAS DE USUARIO ---
 
@@ -74,6 +75,8 @@ class FamiliaDetalle(BaseModel):
 class ActividadBase(BaseModel):
     titulo: str
     descripcion: Optional[str] = None
+    # NUEVO: Fecha para que el calendario sepa dónde poner el punto naranja
+    fecha: Optional[date] = None 
 
 class ActividadCreate(ActividadBase):
     id_familia: int
@@ -82,6 +85,7 @@ class ActividadCreate(ActividadBase):
 class ActividadResponse(ActividadBase):
     id_actividad: int
     es_sugerencia: bool
+    aprobada: bool = False # AGREGADO: Para que el frontend sepa si ya fue aceptada
     terminada: bool = False # Para filtrar las que ya se calificaron
     usuarios_asignados: List[UsuarioResumen] = [] 
     

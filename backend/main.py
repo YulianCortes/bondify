@@ -163,9 +163,15 @@ def listar_actividades(id_familia: int, db: Session = Depends(get_db)):
             "descripcion": a.descripcion,
             "es_sugerencia": a.es_sugerencia,
             "terminada": a.terminada,
+            "fecha": a.fecha, # <-- ACTUALIZADO: Para que el frontend vea el día
             "usuarios_asignados": [{"id_usuario": u.id_usuario, "nombre": u.nombre} for u in a.usuarios_asignados]
         })
     return resultado
+
+# NUEVA RUTA PARA EL CALENDARIO MENSUAL
+@app.get("/familias/{id_familia}/actividades/mes/{mes}/{anio}")
+def obtener_calendario_mensual(id_familia: int, mes: int, anio: int, db: Session = Depends(get_db)):
+    return crud.obtener_actividades_por_mes(db, id_familia, mes, anio)
 
 # LÓGICA DE FINALIZACIÓN MEJORADA (RACHA INDIVIDUAL Y FAMILIAR)
 @app.put("/actividades/{id_actividad}/finalizar")

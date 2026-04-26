@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, Boolean, Text
+from sqlalchemy import Column, Integer, String, ForeignKey, Boolean, Text, Date
 from sqlalchemy.orm import relationship
 from backend.database import Base 
 
@@ -69,6 +69,10 @@ class Actividad(Base):
     
     # NUEVO: Para saber si el jefe ya calificó y terminó esta tarea
     terminada = Column(Boolean, default=False)
+    
+    # NUEVO: FECHA PARA EL CALENDARIO (Sincronización real)
+    # Aquí es donde guardaremos que la actividad es para el 27/04/2026
+    fecha = Column(Date, nullable=True)
     
     # Foreign Keys
     id_familia = Column(Integer, ForeignKey("familias.id_familia"), nullable=True)
