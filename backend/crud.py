@@ -32,7 +32,7 @@ def aprobar_y_asignar(db: Session, id_actividad: int, id_asignado: int):
 def crear_usuario(db: Session, usuario: schemas.UsuarioCreate):
     db_usuario = models.Usuario(
         nombre=usuario.nombre,
-        correo=usuario.correo,
+        correo=usuario.correo.lower(), # Guardamos siempre en minúsculas por seguridad
         telefono=usuario.telefono,
         contrasena=usuario.contrasena,
         tipo_usuario=usuario.tipo_usuario 
@@ -46,7 +46,7 @@ def get_usuario_by_telefono(db: Session, telefono: str):
     return db.query(models.Usuario).filter(models.Usuario.telefono == telefono).first()
 
 def get_usuario_by_email(db: Session, email: str):
-    return db.query(models.Usuario).filter(models.Usuario.correo == email).first()
+    return db.query(models.Usuario).filter(models.Usuario.correo == email.lower()).first()
 
 # --- 4. CREAR ACTIVIDAD DIRECTAMENTE (Para el jefe) ---
 def crear_actividad(db: Session, actividad: schemas.ActividadCreate):
@@ -187,18 +187,21 @@ def disolver_familia_completo(db: Session, id_familia: int, id_jefe: int):
         return False
 
     try:
-        # DESVINCULACIÓN: Ponemos el id_familia de los miembros en NULL
         db.query(models.Usuario).filter(models.Usuario.id_familia == id_familia).update(
             {models.Usuario.id_familia: None}, 
             synchronize_session="fetch"
         )
-        
-        # ELIMINACIÓN EN CASCADA: MySQL borrará actividades y mensajes por el models.py
         db.delete(familia)
-        
         db.commit()
         return True
     except Exception as e:
         db.rollback()
         print(f"Error en la cirugía de disolución: {e}")
         return False
+
+# --- 11. UTILIDADES DE MASCOTA (LÓGICA DE 7 ETAPAS SIN FRUTOS) ---
+def obtener_nivel_mascota(puntos_familia: int):
+    # Centralizamos el cálculo: cada 15 puntos = 1 nivel (Max 7)
+    # Fase 1: Semilla -> Fase 7: Roble Legendario
+    nivel = (puntos_familia // 15) + 1
+    return max(1, min(7, nivel))

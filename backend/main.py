@@ -5,6 +5,7 @@ from backend.database import SessionLocal, engine
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, List
 from datetime import date 
+import re # --- AGREGADO PARA VALIDACIÓN DE CORREO ---
 
 # 1. Conexión y creación de tablas
 models.Base.metadata.create_all(bind=engine)
@@ -26,12 +27,31 @@ def get_db():
     finally:
         db.close()
 
-# --- RUTAS DE USUARIO --- (Sin cambios para no dañar nada)
+# --- RUTAS DE USUARIO ---
+
 @app.post("/usuarios/", response_model=schemas.Usuario)
 def registrar_usuario(usuario: schemas.UsuarioCreate, db: Session = Depends(get_db)):
+    # --- ACTUALIZACIÓN: VALIDACIONES DE SEGURIDAD ---
+    
+    # 1. Validar formato de correo electrónico
+    email_regex = r'^[a-z0-9]+[\._]?[a-z0-9]+[@]\w+[.]\w{2,3}$'
+    if not re.match(email_regex, usuario.correo.lower()):
+        raise HTTPException(status_code=400, detail="El formato del correo no es válido")
+
+    # 2. Validar que el teléfono sea solo números
+    if not usuario.telefono.isdigit():
+        raise HTTPException(status_code=400, detail="El teléfono debe contener solo números")
+
+    # 3. Verificar si el correo ya existe
     db_usuario = crud.get_usuario_by_email(db, email=usuario.correo)
     if db_usuario:
         raise HTTPException(status_code=400, detail="El correo ya está registrado")
+    
+    # 4. Verificar si el teléfono ya existe (NUEVO)
+    db_tel = crud.get_usuario_by_telefono(db, telefono=usuario.telefono)
+    if db_tel:
+        raise HTTPException(status_code=400, detail="Este número de teléfono ya está registrado")
+        
     return crud.crear_usuario(db=db, usuario=usuario)
 
 @app.post("/login/")
@@ -204,7 +224,6 @@ def finalizar_actividad(id_actividad: int, participaciones: Dict[str, bool] = Bo
     return {"mensaje": "Puntos procesados", "puntos_familia": fam.puntos_familia}
 
 # --- RUTAS RESTANTES (Asignaciones, Borrado Actividades, Muro) ---
-# Se mantienen igual para no afectar el flujo del programa
 
 @app.put("/actividades/{id_actividad}/asignar/{id_usuario}")
 def asignar_miembro(id_actividad: int, id_usuario: int, db: Session = Depends(get_db)):
