@@ -8,8 +8,7 @@ def obtener_actividades_view(page: ft.Page, volver_home, usuario_sesion):
     id_actual = usuario_sesion.get("id_usuario")
     es_jefe = usuario_sesion.get("tipo_usuario") == "Jefe"
     
-    # --- CIRUGÍA DE PRECISIÓN: Sincronización con la fecha real ---
-    # Cambiamos el 25 fijo por .today() para que no se desfase con el calendario
+    # --- CONFIGURACIÓN DE ESTADO ---
     estado = {
         "id_familia": None, 
         "miembros": [],
@@ -29,12 +28,11 @@ def obtener_actividades_view(page: ft.Page, volver_home, usuario_sesion):
     ]
 
     lista_oficial = ft.Column(spacing=15, width=380)
-    lista_disponibilidad = ft.Column(spacing=5)
+    lista_disponibilidad = ft.Column(spacing=8) # Un poco más de espacio entre miembros
     
     txt_jefe_titulo = ft.TextField(label="Título de la tarea", bgcolor="white", color="#212121", border_color="#3C7517")
     txt_jefe_desc = ft.TextField(label="Descripción", bgcolor="white", color="#212121", multiline=True, border_color="#3C7517")
 
-    # --- TEXTO INDEPENDIENTE (Tu lógica intacta) ---
     texto_fecha_dinamico = ft.Text(f"Día: {estado['fecha_seleccionada'].strftime('%d/%m/%Y')}", color="#3C7517", weight="bold")
 
     def cambiar_fecha(e):
@@ -51,7 +49,7 @@ def obtener_actividades_view(page: ft.Page, volver_home, usuario_sesion):
 
     date_picker = ft.DatePicker(
         on_change=cambiar_fecha,
-        value=datetime.datetime.now(), # Para que el selector también inicie en hoy
+        value=datetime.datetime.now(),
         first_date=datetime.datetime(2026, 1, 1),
         last_date=datetime.datetime(2026, 12, 31),
     )
@@ -68,14 +66,11 @@ def obtener_actividades_view(page: ft.Page, volver_home, usuario_sesion):
     def abrir_calificacion(actividad):
         participaciones = {}
         checkboxes_cont = ft.Column(spacing=10)
-
         for u in actividad["usuarios_asignados"]:
             u_id = str(u["id_usuario"])
             participaciones[u_id] = True 
-            
             def check_cambiado(e, uid=u_id):
                 participaciones[uid] = e.control.value
-
             checkboxes_cont.controls.append(
                 ft.Checkbox(
                     label=f"¿Cumplió {u['nombre']}?", 
@@ -88,10 +83,7 @@ def obtener_actividades_view(page: ft.Page, volver_home, usuario_sesion):
 
         def finalizar_y_cobrar(e):
             try:
-                res = requests.put(
-                    f"http://127.0.0.1:8000/actividades/{actividad['id_actividad']}/finalizar",
-                    json=participaciones
-                )
+                res = requests.put(f"http://127.0.0.1:8000/actividades/{actividad['id_actividad']}/finalizar", json=participaciones)
                 if res.status_code == 200:
                     dialogo_nota.open = False
                     page.update()
@@ -105,8 +97,7 @@ def obtener_actividades_view(page: ft.Page, volver_home, usuario_sesion):
             bgcolor="#F4EAE0", 
             title=ft.Text("Finalizar y Calificar", weight="bold", color="#3C7517"),
             content=ft.Column([
-                ft.Text("Selecciona quiénes participaron para darles sus puntos individuales.", 
-                        size=13, italic=True, color="#5D4037"),
+                ft.Text("Selecciona quiénes participaron para darles sus puntos individuales.", size=13, italic=True, color="#5D4037"),
                 ft.Divider(color="#D7CCC8"),
                 checkboxes_cont
             ], tight=True, width=320),
@@ -115,20 +106,15 @@ def obtener_actividades_view(page: ft.Page, volver_home, usuario_sesion):
                 ft.ElevatedButton("Cobrar Puntos 💰", bgcolor="#3C7517", color="white", on_click=finalizar_y_cobrar)
             ]
         )
-        
         page.overlay.append(dialogo_nota)
         dialogo_nota.open = True
         page.update()
 
     def marcar_actividad_fallida(actividad):
         participaciones_fallidas = {str(u["id_usuario"]): False for u in actividad["usuarios_asignados"]}
-        
         def confirmar_fallo(e):
             try:
-                res = requests.put(
-                    f"http://127.0.0.1:8000/actividades/{actividad['id_actividad']}/finalizar",
-                    json=participaciones_fallidas
-                )
+                res = requests.put(f"http://127.0.0.1:8000/actividades/{actividad['id_actividad']}/finalizar", json=participaciones_fallidas)
                 if res.status_code == 200:
                     dialogo_fallo.open = False
                     page.update()
@@ -146,11 +132,11 @@ def obtener_actividades_view(page: ft.Page, volver_home, usuario_sesion):
                 ft.ElevatedButton("Confirmar Fallo", bgcolor="#E64A19", color="white", on_click=confirmar_fallo)
             ]
         )
-        
         page.overlay.append(dialogo_fallo)
         dialogo_fallo.open = True
         page.update()
 
+    # --- FUNCIÓN CARGAR TODO (CIRUGÍA AQUÍ) ---
     def cargar_todo():
         try:
             res_fam = requests.get(f"http://127.0.0.1:8000/familias/{id_actual}/integrantes")
@@ -164,12 +150,14 @@ def obtener_actividades_view(page: ft.Page, volver_home, usuario_sesion):
                     lista_disponibilidad.controls.clear()
                     for m in estado["miembros"]:
                         dispo = m.get('disponibilidad') or "Sin horario"
+                        # MEJORA: Envolvemos en Column con expand para evitar recorte
                         lista_disponibilidad.controls.append(
                             ft.Row([
                                 ft.Icon(ft.Icons.PERSON_PIN_ROUNDED, color="#3C7517", size=20),
-                                ft.Text(f"{m['nombre']}: ", color="#212121", weight="bold"),
-                                ft.Text(dispo, color="#333333")
-                            ])
+                                ft.Column([
+                                    ft.Text(f"{m['nombre']}: {dispo}", color="#212121", weight="w500", size=14),
+                                ], expand=True) # Esto obliga al texto a hacer wrap (saltar de línea)
+                            ], vertical_alignment=ft.CrossAxisAlignment.CENTER)
                         )
             page.update()
         except: pass
@@ -190,7 +178,6 @@ def obtener_actividades_view(page: ft.Page, volver_home, usuario_sesion):
             if res.status_code == 200:
                 tareas = res.json()
                 lista_oficial.controls.clear()
-                
                 for a in tareas:
                     if a.get('es_sugerencia'): continue
                     asignados = a.get('usuarios_asignados', [])
@@ -220,20 +207,10 @@ def obtener_actividades_view(page: ft.Page, volver_home, usuario_sesion):
                             ft.Row([
                                 ft.Icon(ft.Icons.GROUPS_ROUNDED, color="#3C7517", size=26),
                                 ft.Text(a['titulo'], weight="bold", color="#212121", size=18, expand=True),
-                                
                                 ft.Row([
-                                    ft.IconButton(
-                                        icon=ft.Icons.CHECK_CIRCLE_ROUNDED, 
-                                        icon_color="green",
-                                        on_click=lambda e, act=a: abrir_calificacion(act)
-                                    ),
-                                    ft.IconButton(
-                                        icon=ft.Icons.CANCEL_ROUNDED, 
-                                        icon_color="orange",
-                                        on_click=lambda e, act=a: marcar_actividad_fallida(act)
-                                    ),
-                                    ft.IconButton(ft.Icons.DELETE_SWEEP_ROUNDED, icon_color="red", 
-                                                  on_click=lambda e, id_a=a['id_actividad']: borrar_act_db(id_a))
+                                    ft.IconButton(icon=ft.Icons.CHECK_CIRCLE_ROUNDED, icon_color="green", on_click=lambda e, act=a: abrir_calificacion(act)),
+                                    ft.IconButton(icon=ft.Icons.CANCEL_ROUNDED, icon_color="orange", on_click=lambda e, act=a: marcar_actividad_fallida(act)),
+                                    ft.IconButton(ft.Icons.DELETE_SWEEP_ROUNDED, icon_color="red", on_click=lambda e, id_a=a['id_actividad']: borrar_act_db(id_a))
                                 ], visible=es_jefe)
                             ]),
                             ft.Text(f"📅 Fecha: {a.get('fecha') or 'Sin fecha'}", size=12, color="#5D4037"),
@@ -261,10 +238,8 @@ def obtener_actividades_view(page: ft.Page, volver_home, usuario_sesion):
     def asignar_catalogo(titulo, cat):
         if not estado["id_familia"]: return
         requests.post("http://127.0.0.1:8000/actividades/", json={
-            "titulo": titulo, 
-            "descripcion": f"Categoría: {cat}", 
-            "id_familia": int(estado["id_familia"]), 
-            "es_sugerencia": False,
+            "titulo": titulo, "descripcion": f"Categoría: {cat}", 
+            "id_familia": int(estado["id_familia"]), "es_sugerencia": False,
             "fecha": estado["fecha_seleccionada"].isoformat()
         })
         cargar_todo()
@@ -285,7 +260,6 @@ def obtener_actividades_view(page: ft.Page, volver_home, usuario_sesion):
                 ft.Row([btn_fecha], alignment=ft.MainAxisAlignment.CENTER),
                 ft.Row([ft.ElevatedButton("Publicar para la Familia", on_click=crear_tarea_jefe, bgcolor="#3C7517", color="white", width=250, height=45)], alignment=ft.MainAxisAlignment.CENTER)
             ], horizontal_alignment=ft.CrossAxisAlignment.CENTER)), 
-        
         ft.ExpansionTile(
             title=ft.Text("Sugerencias Bondify", weight="bold", color="#212121"),
             subtitle=ft.Text("Ideas para fortalecer la unión", size=12, color="#333333"),
@@ -293,8 +267,7 @@ def obtener_actividades_view(page: ft.Page, volver_home, usuario_sesion):
                 ft.ListTile(
                     title=ft.Text(item['t'], size=14, color="#212121", weight="w500"),
                     subtitle=ft.Text(item['cat'], size=11, color="#3C7517"),
-                    trailing=ft.IconButton(ft.Icons.ADD_CIRCLE_OUTLINE, icon_color="#3C7517", 
-                                           on_click=lambda e, t=item['t'], c=item['cat']: asignar_catalogo(t, c)),
+                    trailing=ft.IconButton(ft.Icons.ADD_CIRCLE_OUTLINE, icon_color="#3C7517", on_click=lambda e, t=item['t'], c=item['cat']: asignar_catalogo(t, c)),
                 ) for item in catalogo_items
             ]
         ),

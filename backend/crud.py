@@ -1,8 +1,9 @@
 from sqlalchemy.orm import Session
 from backend import models, schemas
 from datetime import date # <-- Necesario para el calendario
+from sqlalchemy import extract
 
-# 1. Crear sugerencia (Para el familiar) - ACTUALIZADO
+# --- 1. CREAR SUGERENCIA (Para el familiar) ---
 def crear_sugerencia(db: Session, actividad: schemas.ActividadCreate):
     nueva_sugerencia = models.Actividad(
         titulo=actividad.titulo,
@@ -10,14 +11,14 @@ def crear_sugerencia(db: Session, actividad: schemas.ActividadCreate):
         id_familia=actividad.id_familia, 
         es_sugerencia=True,
         aprobada=False,
-        fecha=actividad.fecha # <-- INYECCIÓN: Guardamos la fecha si viene del calendario
+        fecha=actividad.fecha # Guardamos la fecha si viene del calendario
     )
     db.add(nueva_sugerencia)
     db.commit()
     db.refresh(nueva_sugerencia)
     return nueva_sugerencia
 
-# 2. Aprobar sugerencia (Para el jefe)
+# --- 2. APROBAR SUGERENCIA (Para el jefe) ---
 def aprobar_y_asignar(db: Session, id_actividad: int, id_asignado: int):
     actividad = db.query(models.Actividad).filter(models.Actividad.id_actividad == id_actividad).first()
     if actividad:
@@ -27,7 +28,7 @@ def aprobar_y_asignar(db: Session, id_actividad: int, id_asignado: int):
         db.commit()
     return actividad
 
-# 3. Usuarios y Auth
+# --- 3. USUARIOS Y AUTH ---
 def crear_usuario(db: Session, usuario: schemas.UsuarioCreate):
     db_usuario = models.Usuario(
         nombre=usuario.nombre,
@@ -47,24 +48,23 @@ def get_usuario_by_telefono(db: Session, telefono: str):
 def get_usuario_by_email(db: Session, email: str):
     return db.query(models.Usuario).filter(models.Usuario.correo == email).first()
 
-# 4. Crear actividad directamente (Para el jefe) - ACTUALIZADO
+# --- 4. CREAR ACTIVIDAD DIRECTAMENTE (Para el jefe) ---
 def crear_actividad(db: Session, actividad: schemas.ActividadCreate):
     nueva_actividad = models.Actividad(
         titulo=actividad.titulo,
         descripcion=actividad.descripcion,
         id_familia=actividad.id_familia, 
         es_sugerencia=actividad.es_sugerencia,
-        aprobada=not actividad.es_sugerencia, # Si no es sugerencia, está aprobada
-        fecha=actividad.fecha # <-- INYECCIÓN: Clave para que aparezca el 25 o 27 de abril
+        aprobada=not actividad.es_sugerencia, 
+        fecha=actividad.fecha 
     )
     db.add(nueva_actividad)
     db.commit()
     db.refresh(nueva_actividad)
     return nueva_actividad
 
-# 5. Listado de actividades
+# --- 5. LISTADO DE ACTIVIDADES ---
 def obtener_actividades_por_familia(db: Session, id_familia: int):
-    # Solo traemos las que NO han terminado para no saturar la vista principal
     return db.query(models.Actividad).filter(
         models.Actividad.id_familia == id_familia,
         models.Actividad.terminada == False 
@@ -73,7 +73,7 @@ def obtener_actividades_por_familia(db: Session, id_familia: int):
 def obtener_todas_las_actividades(db: Session):
     return db.query(models.Actividad).all()
 
-# 6. Perfil y Disponibilidad
+# --- 6. PERFIL Y DISPONIBILIDAD (Recuperado al 100%) ---
 def actualizar_disponibilidad(db: Session, usuario_id: int, nueva_disponibilidad: str):
     db_usuario = db.query(models.Usuario).filter(models.Usuario.id_usuario == usuario_id).first()
     if db_usuario:
@@ -101,18 +101,15 @@ def actualizar_perfil_usuario(db: Session, usuario_id: int, datos_perfil: schema
         db.refresh(db_usuario)
     return db_usuario
 
-# 7. NUEVA SECCIÓN: Lógica para el Calendario Mensual
+# --- 7. LÓGICA PARA EL CALENDARIO MENSUAL ---
 def obtener_actividades_por_mes(db: Session, id_familia: int, mes: int, anio: int):
-    # Filtramos las actividades de una familia que caigan en un mes específico
-    from sqlalchemy import extract
     return db.query(models.Actividad).filter(
         models.Actividad.id_familia == id_familia,
         extract('month', models.Actividad.fecha) == mes,
         extract('year', models.Actividad.fecha) == anio
     ).all()
 
-# --- 8. ADICIÓN: LÓGICA DE ASIGNACIONES, PUNTOS Y BORRADO ---
-
+# --- 8. ASIGNACIONES, PUNTOS Y BORRADO ---
 def asignar_usuario_a_actividad(db: Session, id_actividad: int, id_usuario: int):
     actividad = db.query(models.Actividad).filter(models.Actividad.id_actividad == id_actividad).first()
     usuario = db.query(models.Usuario).filter(models.Usuario.id_usuario == id_usuario).first()
@@ -140,31 +137,24 @@ def eliminar_actividad(db: Session, id_actividad: int):
     return False
 
 def finalizar_actividad_y_puntos(db: Session, id_actividad: int, participaciones: dict):
-    # participaciones es un dict enviado desde el frontend: {id_usuario: bool}
     actividad = db.query(models.Actividad).filter(models.Actividad.id_actividad == id_actividad).first()
-    if not actividad:
-        return None
-    
+    if not actividad: return None
     familia = db.query(models.Familia).filter(models.Familia.id_familia == actividad.id_familia).first()
     
     for u_id_str, cumplio in participaciones.items():
-        u_id = int(u_id_str)
-        usuario = db.query(models.Usuario).filter(models.Usuario.id_usuario == u_id).first()
+        usuario = db.query(models.Usuario).filter(models.Usuario.id_usuario == int(u_id_str)).first()
         if usuario:
             if cumplio:
-                usuario.puntos += 5 # Puntos individuales
-                if familia: familia.puntos_familia += 5 # Puntos racha familiar
+                usuario.puntos += 5 
+                if familia: familia.puntos_familia += 5 
             else:
-                # Penalización a la racha si la actividad se marca como fallida
-                if familia: 
-                    familia.puntos_familia = max(0, familia.puntos_familia - 5)
+                if familia: familia.puntos_familia = max(0, familia.puntos_familia - 5)
     
     actividad.terminada = True
     db.commit()
     return actividad
 
-# --- 9. ADICIÓN: LÓGICA PARA EL MURO FAMILIAR ---
-
+# --- 9. MURO FAMILIAR ---
 def crear_mensaje_muro(db: Session, id_familia: int, mensaje: schemas.MuroCreate):
     hoy_str = date.today().isoformat()
     nuevo_mensaje = models.MuroMensaje(
@@ -185,3 +175,30 @@ def obtener_mensajes_muro_hoy(db: Session, id_familia: int):
         models.MuroMensaje.id_familia == id_familia,
         models.MuroMensaje.fecha == hoy_str
     ).all()
+
+# --- 10. ADICIÓN: DISOLVER FAMILIA (TU IDEA DE DESVINCULAR) ---
+def disolver_familia_completo(db: Session, id_familia: int, id_jefe: int):
+    familia = db.query(models.Familia).filter(
+        models.Familia.id_familia == id_familia, 
+        models.Familia.id_jefe == id_jefe
+    ).first()
+    
+    if not familia:
+        return False
+
+    try:
+        # DESVINCULACIÓN: Ponemos el id_familia de los miembros en NULL
+        db.query(models.Usuario).filter(models.Usuario.id_familia == id_familia).update(
+            {models.Usuario.id_familia: None}, 
+            synchronize_session="fetch"
+        )
+        
+        # ELIMINACIÓN EN CASCADA: MySQL borrará actividades y mensajes por el models.py
+        db.delete(familia)
+        
+        db.commit()
+        return True
+    except Exception as e:
+        db.rollback()
+        print(f"Error en la cirugía de disolución: {e}")
+        return False

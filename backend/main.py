@@ -4,7 +4,7 @@ from backend import crud, models, schemas
 from backend.database import SessionLocal, engine
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, List
-from datetime import date # AGREGADO PARA EL MURO
+from datetime import date 
 
 # 1. Conexión y creación de tablas
 models.Base.metadata.create_all(bind=engine)
@@ -26,8 +26,7 @@ def get_db():
     finally:
         db.close()
 
-# --- RUTAS DE USUARIO ---
-
+# --- RUTAS DE USUARIO --- (Sin cambios para no dañar nada)
 @app.post("/usuarios/", response_model=schemas.Usuario)
 def registrar_usuario(usuario: schemas.UsuarioCreate, db: Session = Depends(get_db)):
     db_usuario = crud.get_usuario_by_email(db, email=usuario.correo)
@@ -134,39 +133,20 @@ def borrar_miembro(usuario_id_a_borrar: int, id_jefe: int = Query(...), db: Sess
     db.commit()
     return {"mensaje": "Miembro removido"}
 
-# --- CIRUGÍA: RUTA DE DISOLVER ACTUALIZADA (ORDEN DE LIMPIEZA TOTAL) ---
+# --- CIRUGÍA: RUTA DE DISOLVER LLAMANDO AL CRUD (LIMPIEZA TOTAL) ---
 @app.delete("/familias/disolver/{id_familia}")
 def disolver_familia(id_familia: int, id_jefe: int, db: Session = Depends(get_db)):
-    print(f"SISTEMA: Intento de disolución - Familia: {id_familia} por Jefe: {id_jefe}")
+    print(f"📡 SISTEMA: Solicitud de disolución recibida para Familia ID: {id_familia}")
     
-    familia = db.query(models.Familia).filter(
-        models.Familia.id_familia == id_familia, 
-        models.Familia.id_jefe == id_jefe
-    ).first()
+    # Llamamos a nuestra función blindada del CRUD que maneja la desvinculación y el borrado
+    exito = crud.disolver_familia_completo(db, id_familia, id_jefe)
     
-    if not familia:
-        print("SISTEMA: Error - No se encontró la familia o no es el jefe real.")
-        raise HTTPException(status_code=403, detail="No tienes permiso")
+    if not exito:
+        print("❌ SISTEMA: La disolución falló (No es el jefe o error de integridad)")
+        raise HTTPException(status_code=400, detail="No se pudo disolver la familia. Verifica que seas el jefe.")
     
-    try:
-        # 1. Desvincular usuarios (Ponemos su id_familia en NULL)
-        db.query(models.Usuario).filter(models.Usuario.id_familia == id_familia).update({"id_familia": None})
-        
-        # 2. Borrar mensajes del muro vinculados
-        db.query(models.MuroMensaje).filter(models.MuroMensaje.id_familia == id_familia).delete()
-        
-        # 3. Borrar actividades vinculadas
-        db.query(models.Actividad).filter(models.Actividad.id_familia == id_familia).delete()
-        
-        # 4. Ahora sí, borrar la familia del registro
-        db.delete(familia)
-        db.commit()
-        print(f"SISTEMA: ¡Familia {id_familia} disuelta con éxito!")
-        return {"mensaje": "Grupo familiar disuelto correctamente."}
-    except Exception as e:
-        db.rollback()
-        print(f"SISTEMA: Error crítico al disolver -> {e}")
-        raise HTTPException(status_code=500, detail="Error de integridad en la base de datos")
+    print(f"✅ SISTEMA: ¡Familia {id_familia} borrada físicamente y usuarios desvinculados!")
+    return {"mensaje": "Grupo familiar disuelto correctamente."}
 
 # --- RUTAS DE ACTIVIDADES ---
 
@@ -223,6 +203,9 @@ def finalizar_actividad(id_actividad: int, participaciones: Dict[str, bool] = Bo
     db.commit()
     return {"mensaje": "Puntos procesados", "puntos_familia": fam.puntos_familia}
 
+# --- RUTAS RESTANTES (Asignaciones, Borrado Actividades, Muro) ---
+# Se mantienen igual para no afectar el flujo del programa
+
 @app.put("/actividades/{id_actividad}/asignar/{id_usuario}")
 def asignar_miembro(id_actividad: int, id_usuario: int, db: Session = Depends(get_db)):
     existe = db.query(models.AsignacionActividad).filter(
@@ -251,31 +234,10 @@ def borrar_actividad(id_actividad: int, db: Session = Depends(get_db)):
     db.commit()
     return {"mensaje": "Eliminada"}
 
-# --- RUTAS DEL MURO FAMILIAR ---
-
 @app.post("/familias/{id_familia}/muro", response_model=schemas.MuroResponse)
 def publicar_mensaje_muro(id_familia: int, mensaje: schemas.MuroCreate, db: Session = Depends(get_db)):
-    hoy_str = date.today().isoformat() 
-    
-    nuevo_mensaje = models.MuroMensaje(
-        id_familia=id_familia,
-        autor=mensaje.autor,
-        contenido=mensaje.contenido,
-        tipo=mensaje.tipo,
-        fecha=hoy_str
-    )
-    
-    db.add(nuevo_mensaje)
-    db.commit()
-    db.refresh(nuevo_mensaje)
-    return nuevo_mensaje
+    return crud.crear_mensaje_muro(db=db, id_familia=id_familia, mensaje=mensaje)
 
 @app.get("/familias/{id_familia}/muro", response_model=List[schemas.MuroResponse])
 def obtener_mensajes_muro_hoy(id_familia: int, db: Session = Depends(get_db)):
-    hoy_str = date.today().isoformat()
-    mensajes = db.query(models.MuroMensaje).filter(
-        models.MuroMensaje.id_familia == id_familia,
-        models.MuroMensaje.fecha == hoy_str
-    ).all()
-    
-    return mensajes
+    return crud.obtener_mensajes_muro_hoy(db=db, id_familia=id_familia)

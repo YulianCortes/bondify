@@ -2,7 +2,7 @@ import flet as ft
 import datetime
 import json
 import os
-import requests # <-- Agregado para conectar con la DB
+import requests 
 
 # --- RUTA DEL ARCHIVO DONDE SE GUARDARÁN LOS MENSAJES (MANTENIDO) ---
 ARCHIVO_MENSAJES = "historial_muro.json"
@@ -29,12 +29,10 @@ def obtener_familia_view(page: ft.Page, volver_home, usuario_sesion):
     # --- CONFIGURACIÓN Y ESTADO ---
     nombre_usuario = usuario_sesion.get("nombre") or "Miembro de la familia"
     id_familia = usuario_sesion.get("id_familia")
-    id_usuario_logueado = usuario_sesion.get("id_usuario") # Lo necesitamos para consultar el nivel real
+    id_usuario_logueado = usuario_sesion.get("id_usuario") 
     hoy_str = datetime.date.today().isoformat() 
     
-    estado = {
-        "nivel_mascota": 3, 
-    }
+    estado = {"nivel_mascota": 1}
 
     # --- PERSISTENCIA LOCAL (MANTENIDA) ---
     mensajes_guardados = cargar_mensajes_disco()
@@ -43,53 +41,45 @@ def obtener_familia_view(page: ft.Page, volver_home, usuario_sesion):
 
     # --- 7 MENSAJES MOTIVACIONALES POR NIVEL (MANTENIDO) ---
     mensajes_niveles = {
-        1: "¡Bienvenidos a la aventura! La semilla del amor familiar ha sido plantada. 🌱",
-        2: "¡Van por buen camino! El trabajo en equipo empieza a dar frutos. 🌿",
-        3: "¡Qué gran familia! Su dedicación hace que la mascota crezca feliz. 🐾",
-        4: "¡Súper excelente! La comunicación y el esfuerzo los hace imparables. 🌟",
-        5: "¡Increíble conexión! Son un verdadero ejemplo de unión familiar. 💖",
-        6: "¡Nivel maestro! Los lazos que han construido son fuertes y hermosos. 🏆",
-        7: "¡Felicidades, familia legendaria! Han alcanzado la máxima armonía. 👑"
+        1: "¡Bienvenidos! La semilla del amor ha sido plantada. 🌱",
+        2: "¡Van por buen camino! El equipo da frutos. 🌿",
+        3: "¡Qué gran familia! La mascota crece feliz. 🐾",
+        4: "¡Súper excelente! Son imparables. 🌟",
+        5: "¡Increíble conexión! Ejemplo de unión. 💖",
+        6: "¡Nivel maestro! Lazos fuertes y hermosos. 🏆",
+        7: "¡Felicidades, familia legendaria! Armonía total. 👑"
     }
 
     puntos_fam = usuario_sesion.get("puntos_familia") or 0
-    # ACTUALIZADO: Divisor a 15 para coincidir con Home
     nivel_calculado = max(1, min(7, (puntos_fam // 15) + 1))
-    mensaje_actual = mensajes_niveles.get(nivel_calculado, mensajes_niveles)
+    mensaje_actual = mensajes_niveles.get(nivel_calculado, "¡Sigamos adelante!")
 
-    # --- CONTENEDORES VISUALES (MANTENIDOS) ---
+    # --- CONTROLES DINÁMICOS ---
     lista_mensajes = ft.Column(spacing=10, scroll=ft.ScrollMode.ALWAYS, expand=True)
-    
     txt_mensaje = ft.TextField(
-        label="Escribe una sugerencia o cómo te sientes...", 
-        expand=True, 
-        bgcolor="white", 
-        color="#212121", 
-        border_color="#3C7517"
+        label="Escribe aquí...", expand=True, bgcolor="white", 
+        color="#212121", border_color="#3C7517", border_radius=10
     )
+    txt_nivel_display = ft.Text(f"Nivel: {nivel_calculado}", size=18, weight="bold", color="#3C7517")
+    txt_motivacion_display = ft.Text(mensaje_actual, size=12, italic=True, color="#5D4037")
 
-    # --- CONTROLES DE TEXTO PARA ACTUALIZACIÓN DINÁMICA (NUEVO) ---
-    # Estos permiten que el nivel cambie sin recargar toda la vista
-    txt_nivel_display = ft.Text(f"Nivel de la Mascota: {nivel_calculado}", size=20, weight="bold", color="#3C7517")
-    txt_motivacion_display = ft.Text(mensaje_actual, size=14, italic=True, color="#5D4037", weight="w500", text_align=ft.TextAlign.CENTER)
-
-    # --- FUNCIÓN: RENDERIZAR UN MENSAJE (MANTENIDO) ---
+    # --- FUNCIÓN: RENDERIZAR MENSAJE ---
     def dibujar_mensaje(msg):
         if msg["tipo"] == "emoji":
             return ft.Container(
-                padding=10, bgcolor="white", border_radius=10, border=ft.border.all(1, "#CCCCCC"),
-                content=ft.Text(f"{msg['autor']} se siente: {msg['contenido']}", size=15, color="#212121", weight="w500")
+                expand=True, padding=10, bgcolor="white", border_radius=12, border=ft.border.all(1, "#E0E0E0"),
+                content=ft.Text(f"{msg['autor']} se siente: {msg['contenido']}", size=14, color="#212121")
             )
         else:
             return ft.Container(
-                padding=15, bgcolor="#E8F5E9", border_radius=10, border=ft.border.all(1, "#3C7517"),
+                expand=True, padding=12, bgcolor="#E8F5E9", border_radius=12, border=ft.border.all(1, "#3C7517"),
                 content=ft.Column([
-                    ft.Text(f"{msg['autor']} dice:", weight="bold", color="#3C7517", size=12),
-                    ft.Text(msg['contenido'], color="#212121", size=14)
-                ], spacing=2)
+                    ft.Text(f"{msg['autor']} dice:", weight="bold", color="#3C7517", size=11),
+                    ft.Text(msg['contenido'], color="#212121", size=13)
+                ], spacing=1)
             )
 
-    # --- NUEVA FUNCIÓN: CARGAR DESDE DB (MANTENIDO) ---
+    # --- LÓGICA DE DATOS (MANTENIDA) ---
     def cargar_muro_db():
         if not id_familia: return
         try:
@@ -102,48 +92,30 @@ def obtener_familia_view(page: ft.Page, volver_home, usuario_sesion):
                 page.update()
         except: pass
 
-    # --- NUEVA FUNCIÓN: REFRESCAR NIVEL REAL (AGREGADO PARA EL NIVEL 3) ---
     def refrescar_nivel_desde_db():
         try:
-            # Usamos la misma URL que el Home para traer los puntos reales
             res = requests.get(f"http://127.0.0.1:8000/familias/{id_usuario_logueado}/integrantes", timeout=2)
             if res.status_code == 200:
                 datos = res.json()
                 puntos_reales = datos.get("puntos_familia", 0)
-                # Aplicamos la matemática del Home
-                nuevo_nivel = (puntos_reales // 15) + 1
-                if nuevo_nivel > 7: nuevo_nivel = 7
-                
-                txt_nivel_display.value = f"Nivel de la Mascota: {nuevo_nivel}"
-                txt_motivacion_display.value = mensajes_niveles.get(nuevo_nivel, mensajes_niveles)
+                nuevo_nivel = min(7, (puntos_reales // 15) + 1)
+                txt_nivel_display.value = f"Nivel: {nuevo_nivel}"
+                txt_motivacion_display.value = mensajes_niveles.get(nuevo_nivel, "¡Sigamos!")
                 page.update()
         except: pass
 
-    # --- FUNCIÓN: ENVIAR EMOJI (ACTUALIZADA PARA DB + DISCO) ---
     def enviar_emoji(emoji_seleccionado):
-        nuevo_msg = {
-            "tipo": "emoji", 
-            "autor": nombre_usuario, 
-            "contenido": emoji_seleccionado, 
-            "fecha": hoy_str 
-        }
+        nuevo_msg = {"tipo": "emoji", "autor": nombre_usuario, "contenido": emoji_seleccionado, "fecha": hoy_str}
         mensajes_activos.append(nuevo_msg)
         guardar_mensajes_disco(mensajes_activos)
         if id_familia:
             try: requests.post(f"http://127.0.0.1:8000/familias/{id_familia}/muro", json=nuevo_msg, timeout=2)
             except: pass
         cargar_muro_db()
-        page.update()
 
-    # --- FUNCIÓN: ENVIAR TEXTO (ACTUALIZADA PARA DB + DISCO) ---
     def enviar_texto(e):
         if not txt_mensaje.value.strip(): return
-        nuevo_msg = {
-            "tipo": "texto", 
-            "autor": nombre_usuario, 
-            "contenido": txt_mensaje.value, 
-            "fecha": hoy_str 
-        }
+        nuevo_msg = {"tipo": "texto", "autor": nombre_usuario, "contenido": txt_mensaje.value, "fecha": hoy_str}
         mensajes_activos.append(nuevo_msg)
         guardar_mensajes_disco(mensajes_activos)
         if id_familia:
@@ -151,61 +123,67 @@ def obtener_familia_view(page: ft.Page, volver_home, usuario_sesion):
             except: pass
         txt_mensaje.value = "" 
         cargar_muro_db()
-        page.update()
 
-    # Cargas iniciales
-    refrescar_nivel_desde_db() # Primero refrescamos el nivel real
+    # --- UI: COMPACTACIÓN MASTER ---
+    # 1. Mascota en modo horizontal (Slim)
+    panel_mascota = ft.Container(
+        padding=10, bgcolor="#F1F8E9", border_radius=15, border=ft.border.all(1.5, "#3C7517"),
+        content=ft.Row([
+            ft.Icon(ft.Icons.PETS, color="#3C7517", size=30),
+            ft.Column([
+                txt_nivel_display,
+                txt_motivacion_display
+            ], spacing=0, expand=True)
+        ], alignment=ft.MainAxisAlignment.START)
+    )
+
+    # 2. Emojis en modo compacto
+    panel_emojis = ft.Container(
+        padding=5, bgcolor="white", border_radius=10, border=ft.border.all(1, "#E0E0E0"),
+        content=ft.Column([
+            ft.Text("¿Cómo te sientes?", weight="bold", size=13),
+            ft.Row([
+                ft.TextButton("😊 Feliz", on_click=lambda _: enviar_emoji("😊 Feliz"), style=ft.ButtonStyle(padding=2)),
+                ft.TextButton("😔 Triste", on_click=lambda _: enviar_emoji("😔 Triste"), style=ft.ButtonStyle(padding=2)),
+                ft.TextButton("🚀 OK", on_click=lambda _: enviar_emoji("🚀 Motivado"), style=ft.ButtonStyle(padding=2)),
+                ft.TextButton("❤️ Amor", on_click=lambda _: enviar_emoji("❤️ Amor"), style=ft.ButtonStyle(padding=2)),
+                ft.TextButton("😡 Mal", on_click=lambda _: enviar_emoji("😡 Estresado"), style=ft.ButtonStyle(padding=2))
+            ], wrap=True, alignment=ft.MainAxisAlignment.CENTER, spacing=0)
+        ], spacing=2)
+    )
+
+    refrescar_nivel_desde_db()
     cargar_muro_db()
 
-    # --- UI: SECCIÓN DE LA MASCOTA ---
-    panel_mascota = ft.Container(
-        padding=20, bgcolor="#F1F8E9", border_radius=15, border=ft.border.all(2, "#3C7517"),
-        content=ft.Column([
-            ft.Row([
-                ft.Icon(ft.Icons.PETS, color="#3C7517", size=40),
-                txt_nivel_display, # Usamos el control dinámico
-            ], alignment=ft.MainAxisAlignment.CENTER),
-            txt_motivacion_display # Usamos el control dinámico
-        ], horizontal_alignment=ft.CrossAxisAlignment.CENTER)
-    )
-
-    # --- UI: SECCIÓN DE EMOJIS (MANTENIDO) ---
-    panel_emojis = ft.Container(
-        padding=10, bgcolor="white", border_radius=10, border=ft.border.all(1, "#E0E0E0"),
-        content=ft.Column([
-            ft.Text("¿Cómo te sientes hoy?", weight="bold", color="#212121"),
-            ft.Row([
-                ft.TextButton("😊 Feliz", on_click=lambda _: enviar_emoji("😊 Feliz")),
-                ft.TextButton("😴 Cansado", on_click=lambda _: enviar_emoji("😴 Cansado")),
-                ft.TextButton("🚀 Motivado", on_click=lambda _: enviar_emoji("🚀 Motivado")),
-                ft.TextButton("❤️ Amoroso", on_click=lambda _: enviar_emoji("❤️ Amoroso")),
-                ft.TextButton("😡 Estresado", on_click=lambda _: enviar_emoji("😡 Estresado"))
-            ], wrap=True, alignment=ft.MainAxisAlignment.CENTER)
-        ])
-    )
-
-    # --- RETORNO DE LA VISTA COMPLETA (MANTENIDO) ---
+    # --- RETORNO DE LA VISTA (ESTRUCTURA CORREGIDA) ---
     return ft.Container(
-        padding=20, expand=True,
+        padding=15, expand=True,
+        bgcolor="#D1E8E4", 
         content=ft.Column([
             ft.Row([
-                ft.IconButton(ft.Icons.ARROW_BACK_IOS_NEW, on_click=volver_home, icon_color="#3C7517"),
-                ft.Text("Muro Familiar", size=26, weight="bold", color="#3C7517")
+                ft.IconButton(ft.Icons.ARROW_BACK_IOS_NEW, on_click=volver_home, icon_color="#3C7517", icon_size=18),
+                ft.Text("Muro Familiar", size=22, weight="bold", color="#3C7517")
             ]),
-            ft.Divider(color="#3C7517", thickness=2),
             panel_mascota,
             panel_emojis,
-            ft.Text("Mensajes y Sugerencias:", weight="bold", color="#3C7517", size=16),
+            ft.Text("Mensajes:", weight="bold", color="#3C7517", size=15),
+            
+            # EL MURO: Expand=True para que use todo lo que sobra
             ft.Container(
                 content=lista_mensajes,
-                expand=True,
+                expand=True, # Toma todo el espacio disponible
                 bgcolor="#FAFAFA",
-                border_radius=10,
-                padding=10
+                border_radius=15,
+                padding=10,
+                border=ft.border.all(1, "#D1E8E4")
             ),
+            
             ft.Row([
                 txt_mensaje,
-                ft.IconButton(icon=ft.Icons.SEND_ROUNDED, icon_color="white", bgcolor="#3C7517", on_click=enviar_texto)
+                ft.IconButton(
+                    icon=ft.Icons.SEND_ROUNDED, icon_color="white", 
+                    bgcolor="#3C7517", on_click=enviar_texto
+                )
             ])
-        ])
+        ], spacing=8)
     )
