@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from backend import models, schemas
-from datetime import date # <-- Necesario para el calendario
+from datetime import date # para calendario
 from sqlalchemy import extract
 
 # --- 1. CREAR SUGERENCIA (Para el familiar) ---
@@ -32,7 +32,7 @@ def aprobar_y_asignar(db: Session, id_actividad: int, id_asignado: int):
 def crear_usuario(db: Session, usuario: schemas.UsuarioCreate):
     db_usuario = models.Usuario(
         nombre=usuario.nombre,
-        correo=usuario.correo.lower(), # Guardamos siempre en minúsculas por seguridad
+        correo=usuario.correo.lower(), # Guardamos siempre en minúsculas
         telefono=usuario.telefono,
         contrasena=usuario.contrasena,
         tipo_usuario=usuario.tipo_usuario 
@@ -73,7 +73,7 @@ def obtener_actividades_por_familia(db: Session, id_familia: int):
 def obtener_todas_las_actividades(db: Session):
     return db.query(models.Actividad).all()
 
-# --- 6. PERFIL Y DISPONIBILIDAD (Recuperado al 100%) ---
+# 6. PERFIL Y DISPONIBILIDAD (para actividad )
 def actualizar_disponibilidad(db: Session, usuario_id: int, nueva_disponibilidad: str):
     db_usuario = db.query(models.Usuario).filter(models.Usuario.id_usuario == usuario_id).first()
     if db_usuario:

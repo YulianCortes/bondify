@@ -1,8 +1,32 @@
 [
     {
+        "tipo": "texto",
+        "autor": "Yulian Esteban Jaramillo Arias",
+        "contenido": "hola compañeritos",
+        "fecha": "2026-04-28"
+    },
+    {
         "tipo": "emoji",
-        "autor": "Nathalia Julio",
-        "contenido": "❤️ Amor",
-        "fecha": "2026-04-27"
+        "autor": "Yulian Esteban Jaramillo Arias",
+        "contenido": "🚀 Motivado",
+        "fecha": "2026-04-28"
+    },
+    {
+        "tipo": "texto",
+        "autor": "Thomas castañeda",
+        "contenido": "mamaguevo gluglu",
+        "fecha": "2026-04-28"
+    },
+    {
+        "tipo": "emoji",
+        "autor": "Thomas castañeda",
+        "contenido": "😊 Feliz",
+        "fecha": "2026-04-28"
+    },
+    {
+        "tipo": "texto",
+        "autor": "Thomas castañeda",
+        "contenido": "😂",
+        "fecha": "2026-04-28"
     }
 ]
