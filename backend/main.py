@@ -47,7 +47,7 @@ def registrar_usuario(usuario: schemas.UsuarioCreate, db: Session = Depends(get_
     if db_usuario:
         raise HTTPException(status_code=400, detail="El correo ya está registrado")
     
-    # 4. Verificar si el teléfono ya existe (NUEVO)
+    # 4. Verificar si el teléfono ya existe 
     db_tel = crud.get_usuario_by_telefono(db, telefono=usuario.telefono)
     if db_tel:
         raise HTTPException(status_code=400, detail="Este número de teléfono ya está registrado")
